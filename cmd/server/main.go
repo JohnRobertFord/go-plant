@@ -63,19 +63,18 @@ func middleware(next http.Handler) http.Handler {
 		// 	http.Error(w, "Use text/plain data", http.StatusNotAcceptable)
 		// 	return
 		// }
-
 		path := strings.Split(req.URL.Path, "/")
-		if len(path) != 5 {
-			http.Error(w, "Incorrect input!", http.StatusNotFound)
-			return
-		}
-
 		val := path[4]
+
 		if strings.Compare(path[2], "counter") != 0 || !IsCounter(val) {
 			if strings.Compare(path[2], "gauge") != 0 || !IsGauge(val) {
 				http.Error(w, "Bad Request!", http.StatusBadRequest)
 				return
 			}
+		}
+		if len(path) != 5 {
+			http.Error(w, "Incorrect input!", http.StatusNotFound)
+			return
 		}
 
 		next.ServeHTTP(w, req)
