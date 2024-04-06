@@ -70,8 +70,8 @@ func middleware(next http.Handler) http.Handler {
 		}
 		val := path[4]
 
-		if strings.Compare(path[2], "counter") != 0 || !IsCounter(val) {
-			if strings.Compare(path[2], "gauge") != 0 || !IsGauge(val) {
+		if strings.Compare(path[2], "counter") != 0 && !IsCounter(val) {
+			if strings.Compare(path[2], "gauge") != 0 && !IsGauge(val) {
 				http.Error(w, "Bad Request!", http.StatusBadRequest)
 				return
 			}
@@ -102,10 +102,10 @@ func main() {
 	m := NewMemStorage()
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
-		w.Write([]byte("PLANT"))
-		w.WriteHeader(http.StatusOK)
-	})
+	// mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
+	// 	w.Write([]byte("PLANT"))
+	// 	w.WriteHeader(http.StatusOK)
+	// })
 	mux.Handle("/update/gauge/", middleware(http.HandlerFunc(m.Gauge)))
 	mux.Handle("/update/counter/", middleware(http.HandlerFunc(m.Counter)))
 
