@@ -57,10 +57,12 @@ func middleware(next http.Handler) http.Handler {
 			http.Error(w, "Only POST requests are allowed!", http.StatusMethodNotAllowed)
 			return
 		}
-		if req.Header.Get("Content-type") != "text/plain" {
-			http.Error(w, "Use text/plain data", http.StatusNotAcceptable)
-			return
-		}
+
+		req.Header.Set("Accept", "*/*")
+		// if req.Header.Get("Content-type") != "text/plain" {
+		// 	http.Error(w, "Use text/plain data", http.StatusNotAcceptable)
+		// 	return
+		// }
 
 		path := strings.Split(req.URL.Path, "/")
 		if len(path) != 5 {
