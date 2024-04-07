@@ -27,27 +27,26 @@ func NewMemStorage() (h *MemStorage) {
 	}
 }
 
-func (m *MemStorage) Gauge(w http.ResponseWriter, req *http.Request) {
+func (m *MemStorage) Metric(w http.ResponseWriter, req *http.Request) {
 	input := strings.Split(req.URL.Path, "/")[4]
 	metric := strings.Split(req.URL.Path, "/")[3]
+	metric_type := strings.Split(req.URL.Path, "/")[2]
 
-	if f64, err := strconv.ParseFloat(input, 64); err == nil {
-		m.g = gauge(f64)
+	switch metric_type {
+	case "gauge":
+		if f64, err := strconv.ParseFloat(input, 64); err == nil {
+			m.g = gauge(f64)
+		}
+		m.mapa[metric] = m.g
+		fmt.Printf("Value: %v, Metric: %v\n", input, m.mapa[metric])
+	case "counter":
+		if i64, err := strconv.ParseInt(input, 10, 64); err == nil {
+			m.c += counter(i64)
+		}
+		m.mapa[metric] = m.c
+		fmt.Printf("Value: %v, Metric: %v\n", input, m.mapa[metric])
 	}
-	m.mapa[metric] = m.g
 
-	fmt.Printf("Gauge: %v\n", m.mapa[metric])
-	w.WriteHeader(http.StatusOK)
-}
-func (m *MemStorage) Counter(w http.ResponseWriter, req *http.Request) {
-	input := strings.Split(req.URL.Path, "/")[4]
-	metric := strings.Split(req.URL.Path, "/")[3]
-
-	if i64, err := strconv.ParseInt(input, 10, 64); err == nil {
-		m.c += counter(i64)
-	}
-	m.mapa[metric] = m.c
-	fmt.Printf("Counter: %v\n", m.mapa[metric])
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -70,11 +69,8 @@ func middleware(next http.Handler) http.Handler {
 		}
 		val := path[4]
 
-		if strings.Compare(path[2], "counter") != 0 || !IsCounter(val) {
-			if strings.Compare(path[2], "gauge") != 0 && !IsGauge(val) {
-				http.Error(w, "Bad Request!", http.StatusBadRequest)
-				return
-			}
+		if (strings.Compare(path[2], "counter") != 0 || !IsCounter(val)) &&
+			(strings.Compare(path[2], "gauge") != 0 || !IsGauge(val)) {
 			http.Error(w, "Bad Request!", http.StatusBadRequest)
 			return
 		}
@@ -108,8 +104,8 @@ func main() {
 	// 	w.Write([]byte("PLANT"))
 	// 	w.WriteHeader(http.StatusOK)
 	// })
-	mux.Handle("/update/gauge/", middleware(http.HandlerFunc(m.Gauge)))
-	mux.Handle("/update/counter/", middleware(http.HandlerFunc(m.Counter)))
+	mux.Handle("/update/", middleware(http.HandlerFunc(m.Metric)))
+	// mux.Handle("/update/counter/", middleware(http.HandlerFunc(m.Counter)))
 
 	if err := http.ListenAndServe(":8080", mux); err != nil {
 		panic(err)
