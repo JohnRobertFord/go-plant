@@ -70,11 +70,13 @@ func middleware(next http.Handler) http.Handler {
 		}
 		val := path[4]
 
-		if strings.Compare(path[2], "counter") != 0 && !IsCounter(val) {
+		if strings.Compare(path[2], "counter") != 0 || !IsCounter(val) {
 			if strings.Compare(path[2], "gauge") != 0 && !IsGauge(val) {
 				http.Error(w, "Bad Request!", http.StatusBadRequest)
 				return
 			}
+			http.Error(w, "Bad Request!", http.StatusBadRequest)
+			return
 		}
 
 		next.ServeHTTP(w, req)
