@@ -15,14 +15,10 @@ type gauge float64
 type counter int64
 type MemStorage struct {
 	mapa map[string]any
-	g    gauge
-	c    counter
 }
 
 func NewMemStorage() (h *MemStorage) {
 	return &MemStorage{
-		g:    0.0,
-		c:    0,
 		mapa: make(map[string]any),
 	}
 }
@@ -35,16 +31,19 @@ func (m *MemStorage) Metric(w http.ResponseWriter, req *http.Request) {
 	switch metric_type {
 	case "gauge":
 		if f64, err := strconv.ParseFloat(input, 64); err == nil {
-			m.g = gauge(f64)
+			m.mapa[metric] = gauge(f64)
 		}
-		m.mapa[metric] = m.g
-		fmt.Printf("Value: %v, Metric: %v\n", input, m.mapa[metric])
+		fmt.Printf("Storage: %v\n", m.mapa)
 	case "counter":
 		if i64, err := strconv.ParseInt(input, 10, 64); err == nil {
-			m.c += counter(i64)
+			if c, ok := m.mapa[metric].(counter); ok {
+				c += counter(i64)
+				m.mapa[metric] = c
+			} else {
+				m.mapa[metric] = counter(i64)
+			}
 		}
-		m.mapa[metric] = m.c
-		fmt.Printf("Value: %v, Metric: %v\n", input, m.mapa[metric])
+		fmt.Printf("Storage: %v\n", m.mapa)
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -58,10 +57,6 @@ func middleware(next http.Handler) http.Handler {
 		}
 
 		req.Header.Set("Accept", "*/*")
-		// if req.Header.Get("Content-type") != "text/plain" {
-		// 	http.Error(w, "Use text/plain data", http.StatusNotAcceptable)
-		// 	return
-		// }
 		path := strings.Split(req.URL.Path, "/")
 		if len(path) != 5 {
 			http.Error(w, "Incorrect input!", http.StatusNotFound)
@@ -95,17 +90,10 @@ func IsGauge(input string) bool {
 
 func main() {
 
-	// var m1 MemStorage
-	// ml := make(map[string]any)
 	m := NewMemStorage()
 	mux := http.NewServeMux()
 
-	// mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
-	// 	w.Write([]byte("PLANT"))
-	// 	w.WriteHeader(http.StatusOK)
-	// })
 	mux.Handle("/update/", middleware(http.HandlerFunc(m.Metric)))
-	// mux.Handle("/update/counter/", middleware(http.HandlerFunc(m.Counter)))
 
 	if err := http.ListenAndServe(":8080", mux); err != nil {
 		panic(err)
