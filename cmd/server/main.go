@@ -26,9 +26,9 @@ func NewMemStorage() (h *MemStorage) {
 func (m *MemStorage) Metric(w http.ResponseWriter, req *http.Request) {
 	input := strings.Split(req.URL.Path, "/")[4]
 	metric := strings.Split(req.URL.Path, "/")[3]
-	metric_type := strings.Split(req.URL.Path, "/")[2]
+	metricType := strings.Split(req.URL.Path, "/")[2]
 
-	switch metric_type {
+	switch metricType {
 	case "gauge":
 		if f64, err := strconv.ParseFloat(input, 64); err == nil {
 			m.mapa[metric] = gauge(f64)
