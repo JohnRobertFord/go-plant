@@ -78,7 +78,8 @@ func (m Metrics) GetMetrics() []Element {
 func SendMetrics(val string) {
 	resp, err := http.Post("http://localhost:8080/update/"+val, "text/plain", nil)
 	if err != nil {
-		panic(err)
+		fmt.Println(err)
+		return
 	}
 	defer resp.Body.Close()
 }
@@ -96,6 +97,6 @@ func main() {
 			SendMetrics(str)
 		}
 
-		time.Sleep(time.Duration(pollInterval) * time.Second)
+		time.Sleep(time.Duration(reportInterval) * time.Second)
 	}
 }
