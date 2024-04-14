@@ -66,7 +66,7 @@ func (m *MemStorage) GetMetric(w http.ResponseWriter, req *http.Request) {
 
 func (m *MemStorage) GetAll(w http.ResponseWriter, req *http.Request) {
 	var list []string
-	for k, _ := range m.mapa {
+	for k := range m.mapa {
 		list = append(list, k)
 	}
 
@@ -136,6 +136,8 @@ func main() {
 		r.Get("/", m.GetAll)
 		r.Route("/update", func(r chi.Router) {
 			r.Post("/{MT}/{M}/{V}", m.SetMetric)
+		})
+		r.Route("/value", func(r chi.Router) {
 			r.Get("/{MT}/{M}", m.GetMetric)
 		})
 
