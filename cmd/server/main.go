@@ -2,9 +2,13 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 func init() {
@@ -23,17 +27,17 @@ func NewMemStorage() (h *MemStorage) {
 	}
 }
 
-func (m *MemStorage) Metric(w http.ResponseWriter, req *http.Request) {
-	input := strings.Split(req.URL.Path, "/")[4]
-	metric := strings.Split(req.URL.Path, "/")[3]
-	metricType := strings.Split(req.URL.Path, "/")[2]
+func (m *MemStorage) SetMetric(w http.ResponseWriter, req *http.Request) {
 
-	switch metricType {
+	input := chi.URLParam(req, "V")
+	metric := chi.URLParam(req, "M")
+	metrictype := chi.URLParam(req, "MT")
+
+	switch metrictype {
 	case "gauge":
 		if f64, err := strconv.ParseFloat(input, 64); err == nil {
 			m.mapa[metric] = gauge(f64)
 		}
-		fmt.Printf("Storage: %v\n", m.mapa)
 	case "counter":
 		if i64, err := strconv.ParseInt(input, 10, 64); err == nil {
 			if c, ok := m.mapa[metric].(counter); ok {
@@ -43,33 +47,66 @@ func (m *MemStorage) Metric(w http.ResponseWriter, req *http.Request) {
 				m.mapa[metric] = counter(i64)
 			}
 		}
-		fmt.Printf("Storage: %v\n", m.mapa)
 	}
 
 	w.WriteHeader(http.StatusOK)
 }
 
-func middleware(next http.Handler) http.Handler {
+func (m *MemStorage) GetMetric(w http.ResponseWriter, req *http.Request) {
+
+	metric := chi.URLParam(req, "M")
+	res, ok := m.mapa[metric]
+	if !ok {
+		http.Error(w, "Metric Not Found", http.StatusNotFound)
+		return
+	}
+
+	io.WriteString(w, fmt.Sprintf("%v", res))
+}
+
+func (m *MemStorage) GetAll(w http.ResponseWriter, req *http.Request) {
+	var list []string
+	for k, _ := range m.mapa {
+		list = append(list, k)
+	}
+
+	io.WriteString(w, strings.Join(list, ", "))
+}
+
+func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if req.Method != http.MethodPost {
-			http.Error(w, "Only POST requests are allowed!", http.StatusMethodNotAllowed)
-			return
-		}
 
-		req.Header.Set("Accept", "*/*")
 		path := strings.Split(req.URL.Path, "/")
-		if len(path) != 5 {
-			http.Error(w, "Incorrect input!", http.StatusNotFound)
+
+		if req.Method == http.MethodPost {
+
+			req.Header.Set("Accept", "*/*")
+			if len(path) != 5 {
+				http.Error(w, "Not Found", http.StatusNotFound)
+				return
+			}
+			val := path[4]
+
+			if (strings.Compare(path[2], "counter") != 0 || !IsCounter(val)) &&
+				(strings.Compare(path[2], "gauge") != 0 || !IsGauge(val)) {
+				http.Error(w, "Bad Request!", http.StatusBadRequest)
+				return
+			}
+		} else if req.Method == http.MethodGet {
+			if len(path) != 4 && len(path) != 2 {
+				http.Error(w, "Not Found", http.StatusNotFound)
+				return
+			}
+			if (len(path) > 2) &&
+				(strings.Compare(path[2], "counter") != 0) &&
+				(strings.Compare(path[2], "gauge") != 0) {
+				http.Error(w, "Bad Request!", http.StatusBadRequest)
+				return
+			}
+		} else {
+			http.Error(w, "Only POST or GET requests are allowed!", http.StatusMethodNotAllowed)
 			return
 		}
-		val := path[4]
-
-		if (strings.Compare(path[2], "counter") != 0 || !IsCounter(val)) &&
-			(strings.Compare(path[2], "gauge") != 0 || !IsGauge(val)) {
-			http.Error(w, "Bad Request!", http.StatusBadRequest)
-			return
-		}
-
 		next.ServeHTTP(w, req)
 	})
 }
@@ -91,11 +128,20 @@ func IsGauge(input string) bool {
 func main() {
 
 	m := NewMemStorage()
-	mux := http.NewServeMux()
 
-	mux.Handle("/update/", middleware(http.HandlerFunc(m.Metric)))
+	r := chi.NewRouter()
+	r.Route("/", func(r chi.Router) {
+		r.Use(Middleware)
+		r.Use(middleware.SetHeader("Content-Type", "text/plain"))
+		r.Get("/", m.GetAll)
+		r.Route("/update", func(r chi.Router) {
+			r.Post("/{MT}/{M}/{V}", m.SetMetric)
+			r.Get("/{MT}/{M}", m.GetMetric)
+		})
 
-	if err := http.ListenAndServe(":8080", mux); err != nil {
+	})
+
+	if err := http.ListenAndServe(":8080", r); err != nil {
 		panic(err)
 	}
 }
