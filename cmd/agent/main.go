@@ -99,7 +99,7 @@ func SendMetrics(els []Element) {
 }
 
 func main() {
-	rem_addr := os.Getenv("ADDRESS")
+	remAddr := os.Getenv("ADDRESS")
 	ri := os.Getenv("REPORT_INTERVAL")
 	pi := os.Getenv("POLL_INTERVAL")
 
@@ -108,28 +108,28 @@ func main() {
 	pollInt = flag.Int("p", pollInterval, "poll interval")
 	flag.Parse()
 
-	if rem_addr == "" {
-		rem_addr = *remote
+	if remAddr == "" {
+		remAddr = *remote
 	}
-	var ri_int int
+	var rInt int
 	if ri == "" {
-		ri_int = *repInt
+		rInt = *repInt
 	} else {
 		if r, err := strconv.Atoi(ri); err == nil {
-			ri_int = r
+			rInt = r
 		} else {
-			ri_int = *repInt
+			rInt = *repInt
 		}
 	}
 
-	var pi_int int
+	var pInt int
 	if pi == "" {
-		pi_int = *pollInt
+		pInt = *pollInt
 	} else {
 		if p, err := strconv.Atoi(pi); err == nil {
-			pi_int = p
+			pInt = p
 		} else {
-			pi_int = *pollInt
+			pInt = *pollInt
 		}
 	}
 
@@ -140,9 +140,9 @@ func main() {
 	runtime.ReadMemStats(myM.memstats)
 	SendMetrics(myM.GetMetrics())
 
-	if pi_int <= ri_int {
-		c := (ri_int / pi_int)
-		delta := ri_int - (c * pi_int)
+	if pInt <= rInt {
+		c := (rInt / pInt)
+		delta := rInt - (c * pInt)
 		for {
 			for i := 0; i < c; i++ {
 				time.Sleep(time.Duration(*pollInt) * time.Second)
@@ -155,7 +155,7 @@ func main() {
 	runtime.ReadMemStats(myM.memstats)
 	var str string
 	for _, el := range myM.GetMetrics() {
-		str = fmt.Sprint("http://", rem_addr, "/update/", el.MetricType, "/", el.MetricName, "/", el.MetricValue)
+		str = fmt.Sprint("http://", remAddr, "/update/", el.MetricType, "/", el.MetricName, "/", el.MetricValue)
 		SendMetric(str)
 	}
 

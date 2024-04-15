@@ -8,7 +8,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -51,7 +50,6 @@ func (m *MemStorage) SetMetric(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 	}
-	fmt.Println(time.Now())
 	w.WriteHeader(http.StatusOK)
 }
 
