@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
+	"os"
 	"runtime"
+	"strconv"
 	"time"
 )
 
@@ -97,11 +99,39 @@ func SendMetrics(els []Element) {
 }
 
 func main() {
+	rem_addr := os.Getenv("ADDRESS")
+	ri := os.Getenv("REPORT_INTERVAL")
+	pi := os.Getenv("POLL_INTERVAL")
 
-	remote = flag.String("a", "127.0.0.1:8080", "remote endpoint (default: 127.0.0.1:8080)")
-	repInt = flag.Int("r", reportInterval, "report interval (default: 10)")
-	pollInt = flag.Int("p", pollInterval, "poll interval (default: 2)")
+	remote = flag.String("a", "127.0.0.1:8080", "remote endpoint")
+	repInt = flag.Int("r", reportInterval, "report interval")
+	pollInt = flag.Int("p", pollInterval, "poll interval")
 	flag.Parse()
+
+	if rem_addr == "" {
+		rem_addr = *remote
+	}
+	var ri_int int
+	if ri == "" {
+		ri_int = *repInt
+	} else {
+		if r, err := strconv.Atoi(ri); err == nil {
+			ri_int = r
+		} else {
+			ri_int = *repInt
+		}
+	}
+
+	var pi_int int
+	if pi == "" {
+		pi_int = *pollInt
+	} else {
+		if p, err := strconv.Atoi(pi); err == nil {
+			pi_int = p
+		} else {
+			pi_int = *pollInt
+		}
+	}
 
 	myM := Metrics{
 		memstats: &runtime.MemStats{},
@@ -110,9 +140,9 @@ func main() {
 	runtime.ReadMemStats(myM.memstats)
 	SendMetrics(myM.GetMetrics())
 
-	if *pollInt <= *repInt {
-		c := (*repInt / *pollInt)
-		delta := *repInt - (c * *pollInt)
+	if pi_int <= ri_int {
+		c := (ri_int / pi_int)
+		delta := ri_int - (c * pi_int)
 		for {
 			for i := 0; i < c; i++ {
 				time.Sleep(time.Duration(*pollInt) * time.Second)
@@ -125,7 +155,7 @@ func main() {
 	runtime.ReadMemStats(myM.memstats)
 	var str string
 	for _, el := range myM.GetMetrics() {
-		str = fmt.Sprint("http://", *remote, "/update/", el.MetricType, "/", el.MetricName, "/", el.MetricValue)
+		str = fmt.Sprint("http://", rem_addr, "/update/", el.MetricType, "/", el.MetricName, "/", el.MetricValue)
 		SendMetric(str)
 	}
 

@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -49,6 +51,7 @@ func (m *MemStorage) SetMetric(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 	}
+	fmt.Println(time.Now())
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -126,9 +129,13 @@ func IsGauge(input string) bool {
 }
 
 func main() {
-
-	bind := flag.String("a", ":8080", "adderss and port to run server")
+	bind := flag.String("a", ":8080", "adderss and port to run server, or use env ADDRESS")
+	res := os.Getenv("ADDRESS")
 	flag.Parse()
+	if res == "" {
+		res = *bind
+	}
+
 	m := NewMemStorage()
 
 	r := chi.NewRouter()
@@ -145,7 +152,7 @@ func main() {
 		})
 
 	})
-	if err := http.ListenAndServe(*bind, r); err != nil {
+	if err := http.ListenAndServe(res, r); err != nil {
 		panic(err)
 	}
 
