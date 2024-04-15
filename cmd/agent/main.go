@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"math/rand"
 	"net/http"
@@ -10,6 +11,9 @@ import (
 
 var pollInterval = 2
 var reportInterval = 10
+var remote *string
+var pollInt *int
+var repInt *int
 
 type Element struct {
 	MetricType  string
@@ -75,8 +79,8 @@ func (m Metrics) GetMetrics() []Element {
 	return metrics
 }
 
-func SendMetrics(val string) {
-	resp, err := http.Post("http://localhost:8080/update/"+val, "text/plain", nil)
+func SendMetric(val string) {
+	resp, err := http.Post(val, "text/plain", nil)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -84,19 +88,47 @@ func SendMetrics(val string) {
 	defer resp.Body.Close()
 }
 
+func SendMetrics(els []Element) {
+	var str string
+	for _, el := range els {
+		str = fmt.Sprint("http://", *remote, "/update/", el.MetricType, "/", el.MetricName, "/", el.MetricValue)
+		SendMetric(str)
+	}
+}
+
 func main() {
 
-	for {
-		myM := Metrics{
-			memstats: &runtime.MemStats{},
-		}
-		runtime.ReadMemStats(myM.memstats)
-		var str string
-		for _, el := range myM.GetMetrics() {
-			str = fmt.Sprint(el.MetricType, "/", el.MetricName, "/", el.MetricValue)
-			SendMetrics(str)
-		}
+	remote = flag.String("a", "127.0.0.1:8080", "remote endpoint (default: 127.0.0.1:8080)")
+	repInt = flag.Int("r", reportInterval, "report interval (default: 10)")
+	pollInt = flag.Int("p", pollInterval, "poll interval (default: 2)")
+	flag.Parse()
 
-		time.Sleep(time.Duration(reportInterval) * time.Second)
+	myM := Metrics{
+		memstats: &runtime.MemStats{},
 	}
+
+	runtime.ReadMemStats(myM.memstats)
+	SendMetrics(myM.GetMetrics())
+
+	if *pollInt <= *repInt {
+		c := (*repInt / *pollInt)
+		delta := *repInt - (c * *pollInt)
+		for {
+			for i := 0; i < c; i++ {
+				time.Sleep(time.Duration(*pollInt) * time.Second)
+				runtime.ReadMemStats(myM.memstats)
+			}
+			time.Sleep(time.Duration(delta) * time.Second)
+			SendMetrics(myM.GetMetrics())
+		}
+	}
+	runtime.ReadMemStats(myM.memstats)
+	var str string
+	for _, el := range myM.GetMetrics() {
+		str = fmt.Sprint("http://", *remote, "/update/", el.MetricType, "/", el.MetricName, "/", el.MetricValue)
+		SendMetric(str)
+	}
+
+	time.Sleep(time.Duration(*repInt) * time.Second)
+
 }

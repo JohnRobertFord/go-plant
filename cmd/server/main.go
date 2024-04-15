@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -48,7 +49,6 @@ func (m *MemStorage) SetMetric(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 	}
-
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -127,6 +127,8 @@ func IsGauge(input string) bool {
 
 func main() {
 
+	bind := flag.String("a", ":8080", "adderss and port to run server")
+	flag.Parse()
 	m := NewMemStorage()
 
 	r := chi.NewRouter()
@@ -136,14 +138,15 @@ func main() {
 		r.Get("/", m.GetAll)
 		r.Route("/update", func(r chi.Router) {
 			r.Post("/{MT}/{M}/{V}", m.SetMetric)
+
 		})
 		r.Route("/value", func(r chi.Router) {
 			r.Get("/{MT}/{M}", m.GetMetric)
 		})
 
 	})
-
-	if err := http.ListenAndServe(":8080", r); err != nil {
+	if err := http.ListenAndServe(*bind, r); err != nil {
 		panic(err)
 	}
+
 }
