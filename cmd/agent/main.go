@@ -99,18 +99,19 @@ func SendMetrics(els []Element) {
 }
 
 func main() {
-	remAddr := os.Getenv("ADDRESS")
-	ri := os.Getenv("REPORT_INTERVAL")
-	pi := os.Getenv("POLL_INTERVAL")
-
 	remote = flag.String("a", "127.0.0.1:8080", "remote endpoint")
 	repInt = flag.Int("r", reportInterval, "report interval")
 	pollInt = flag.Int("p", pollInterval, "poll interval")
+
+	ri := os.Getenv("REPORT_INTERVAL")
+	pi := os.Getenv("POLL_INTERVAL")
+
 	flag.Parse()
 
-	if remAddr == "" {
-		remAddr = *remote
+	if os.Getenv("ADDRESS") != "" {
+		*remote = os.Getenv("ADDRESS")
 	}
+
 	var rInt int
 	if ri == "" {
 		rInt = *repInt
@@ -152,13 +153,5 @@ func main() {
 			SendMetrics(myM.GetMetrics())
 		}
 	}
-	runtime.ReadMemStats(myM.memstats)
-	var str string
-	for _, el := range myM.GetMetrics() {
-		str = fmt.Sprint("http://", remAddr, "/update/", el.MetricType, "/", el.MetricName, "/", el.MetricValue)
-		SendMetric(str)
-	}
-
-	time.Sleep(time.Duration(*repInt) * time.Second)
 
 }

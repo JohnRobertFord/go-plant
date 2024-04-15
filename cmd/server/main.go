@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -14,7 +15,7 @@ import (
 )
 
 func init() {
-	println("Initialization...")
+	log.Println("Initialization...")
 }
 
 type gauge float64
@@ -128,10 +129,10 @@ func IsGauge(input string) bool {
 
 func main() {
 	bind := flag.String("a", ":8080", "adderss and port to run server, or use env ADDRESS")
-	res := os.Getenv("ADDRESS")
+	remAddr := os.Getenv("ADDRESS")
 	flag.Parse()
-	if res == "" {
-		res = *bind
+	if remAddr == "" {
+		remAddr = *bind
 	}
 
 	m := NewMemStorage()
@@ -150,7 +151,7 @@ func main() {
 		})
 
 	})
-	if err := http.ListenAndServe(res, r); err != nil {
+	if err := http.ListenAndServe(remAddr, r); err != nil {
 		panic(err)
 	}
 
