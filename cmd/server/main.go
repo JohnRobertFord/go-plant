@@ -24,13 +24,13 @@ type MemStorage struct {
 	mapa map[string]any
 }
 
-func NewMemStorage() (h *MemStorage) {
+func NewMemStorage() *MemStorage {
 	return &MemStorage{
 		mapa: make(map[string]any),
 	}
 }
 
-func (m *MemStorage) SetMetric(w http.ResponseWriter, req *http.Request) {
+func (m *MemStorage) WriteMetric(w http.ResponseWriter, req *http.Request) {
 
 	input := chi.URLParam(req, "V")
 	metric := chi.URLParam(req, "M")
@@ -51,6 +51,7 @@ func (m *MemStorage) SetMetric(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 	}
+	// log.Println(time.Now().Second())
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -127,32 +128,33 @@ func IsGauge(input string) bool {
 	return false
 }
 
-func main() {
-	bind := flag.String("a", ":8080", "adderss and port to run server, or use env ADDRESS")
-	remAddr := os.Getenv("ADDRESS")
-	flag.Parse()
-	if remAddr == "" {
-		remAddr = *bind
-	}
-
+func MetricRouter() chi.Router {
 	m := NewMemStorage()
 
 	r := chi.NewRouter()
-	r.Route("/", func(r chi.Router) {
-		r.Use(Middleware)
-		r.Use(middleware.SetHeader("Content-Type", "text/plain"))
-		r.Get("/", m.GetAll)
-		r.Route("/update", func(r chi.Router) {
-			r.Post("/{MT}/{M}/{V}", m.SetMetric)
-
-		})
-		r.Route("/value", func(r chi.Router) {
-			r.Get("/{MT}/{M}", m.GetMetric)
-		})
-
+	r.Use(Middleware)
+	r.Use(middleware.SetHeader("Content-Type", "text/plain"))
+	r.Get("/", m.GetAll)
+	r.Route("/update", func(r chi.Router) {
+		r.Post("/{MT}/{M}/{V}", m.WriteMetric)
 	})
-	if err := http.ListenAndServe(remAddr, r); err != nil {
-		panic(err)
+	r.Route("/value", func(r chi.Router) {
+		r.Get("/{MT}/{M}", m.GetMetric)
+	})
+
+	return r
+}
+
+func main() {
+
+	bind := flag.String("a", ":8080", "adderss and port to run server, or use env ADDRESS")
+	envAddr := os.Getenv("ADDRESS")
+	flag.Parse()
+
+	if envAddr == "" {
+		envAddr = *bind
 	}
+
+	log.Fatal(http.ListenAndServe(envAddr, MetricRouter()))
 
 }
