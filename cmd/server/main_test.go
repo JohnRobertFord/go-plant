@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func testRequest(t *testing.T, ts httptest.Server, method, path string) (*http.Response, string) {
+func testRequest(t *testing.T, ts *httptest.Server, method, path string) (*http.Response, string) {
 
 	req, err := http.NewRequest(method, ts.URL+path, nil)
 	require.NoError(t, err)
@@ -83,7 +83,7 @@ func TestMetricRouter(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			resp, _ := testRequest(t, *ts, test.method, test.url)
+			resp, _ := testRequest(t, ts, test.method, test.url)
 			assert.Equal(t, test.status, resp.StatusCode)
 			// assert.Equal(t, test.want, get)
 			defer resp.Body.Close()
