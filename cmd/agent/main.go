@@ -29,24 +29,24 @@ type Metrics struct {
 	RandomValue uint64
 }
 
-func FormatMetric(type_ string, name string, value uint64) Element {
+func FormatMetric(t string, name string, value uint64) Element {
 	val := float64(value)
 	return Element{
-		MetricType:  type_,
+		MetricType:  t,
 		MetricName:  name,
 		MetricValue: val,
 	}
 }
 
-func FormatFloatMetric(type_ string, name string, value float64) Element {
+func FormatFloatMetric(t string, name string, value float64) Element {
 	return Element{
-		MetricType:  type_,
+		MetricType:  t,
 		MetricName:  name,
 		MetricValue: value,
 	}
 }
 
-func (m Metrics) GetMetrics() []Element {
+func (m *Metrics) GetMetrics() []Element {
 	metrics := make([]Element, 29)
 	metrics[0] = FormatMetric("gauge", "Alloc", m.memstats.Alloc)
 	metrics[1] = FormatMetric("gauge", "BuckHashSys", m.memstats.BuckHashSys)
@@ -90,7 +90,7 @@ func SendMetric(val string) {
 	defer resp.Body.Close()
 }
 
-func SendMetrics(els []Element) {
+func SendData(els []Element) {
 	var str string
 	for _, el := range els {
 		str = fmt.Sprint("http://", *remote, "/update/", el.MetricType, "/", el.MetricName, "/", el.MetricValue)
@@ -98,7 +98,30 @@ func SendMetrics(els []Element) {
 	}
 }
 
+// func SendData(els []Element, m *sync.Mutex, t *time.Ticker) {
+// 	var str string
+// 	for range t.C {
+// 		m.Lock()
+// 		for _, el := range els {
+// 			str = fmt.Sprint("http://", *remote, "/update/", el.MetricType, "/", el.MetricName, "/", el.MetricValue)
+// 			SendMetric(str)
+// 		}
+// 		m.Unlock()
+// 	}
+// }
+
+// // func UpdateMetrics(memStats runtime.MemStats, m *sync.Mutex, t *time.Ticker) {
+
+// // 	for range t.C {
+// // 		log.Println("LOL")
+// // 		m.Lock()
+// // 		runtime.ReadMemStats(&memStats)
+// // 		m.Unlock()
+// // 	}
+// // }
+
 func main() {
+
 	remote = flag.String("a", "127.0.0.1:8080", "remote endpoint")
 	repInt = flag.Int("r", reportInterval, "report interval")
 	pollInt = flag.Int("p", pollInterval, "poll interval")
@@ -138,8 +161,16 @@ func main() {
 		memstats: &runtime.MemStats{},
 	}
 
+	// pollTicker := time.NewTicker(time.Duration(pInt) * time.Second)
+	// reportTicker := time.NewTicker(time.Duration(rInt) * time.Second)
+
+	// var m sync.Mutex
+
+	// go UpdateMetrics(*myM.memstats, &m, pollTicker)
+	// go SendData(myM.GetMetrics(), &m, reportTicker)
+
 	runtime.ReadMemStats(myM.memstats)
-	SendMetrics(myM.GetMetrics())
+	SendData(myM.GetMetrics())
 
 	if pInt <= rInt {
 		c := (rInt / pInt)
@@ -150,7 +181,7 @@ func main() {
 				runtime.ReadMemStats(myM.memstats)
 			}
 			time.Sleep(time.Duration(delta) * time.Second)
-			SendMetrics(myM.GetMetrics())
+			SendData(myM.GetMetrics())
 		}
 	}
 
