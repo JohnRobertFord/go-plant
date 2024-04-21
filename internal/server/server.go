@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-
-	"github.com/go-chi/chi"
 )
 
 type gauge float64
@@ -28,9 +26,9 @@ func (m *MemStorage) WriteMetric(w http.ResponseWriter, req *http.Request) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	input := chi.URLParam(req, "V")
-	metric := chi.URLParam(req, "M")
-	metrictype := chi.URLParam(req, "MT")
+	input := strings.Split(req.URL.Path, "/")[4]
+	metric := strings.Split(req.URL.Path, "/")[3]
+	metrictype := strings.Split(req.URL.Path, "/")[2]
 
 	switch metrictype {
 	case "gauge":
@@ -54,7 +52,7 @@ func (m *MemStorage) GetMetric(w http.ResponseWriter, req *http.Request) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	metric := chi.URLParam(req, "M")
+	metric := strings.Split(req.URL.Path, "/")[3]
 	res, ok := m.mapa[metric]
 	if !ok {
 		http.Error(w, "Metric Not Found", http.StatusNotFound)
