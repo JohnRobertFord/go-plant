@@ -77,6 +77,7 @@ func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 
 		path := strings.Split(req.URL.Path, "/")
+		val := path[4]
 		if req.Method == http.MethodPost {
 
 			req.Header.Set("Accept", "*/*")
@@ -84,9 +85,6 @@ func Middleware(next http.Handler) http.Handler {
 				http.Error(w, "Not Found", http.StatusNotFound)
 				return
 			}
-
-			val := path[4]
-
 			if (strings.Compare(path[2], "counter") != 0 || !IsCounter(val)) &&
 				(strings.Compare(path[2], "gauge") != 0 || !IsGauge(val)) {
 				http.Error(w, "Bad Request!", http.StatusBadRequest)
