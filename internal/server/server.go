@@ -7,14 +7,30 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
+
+	"go.uber.org/zap"
 )
 
-type gauge float64
-type counter int64
-type MemStorage struct {
-	mapa map[string]any
-	mu   sync.Mutex
-}
+var sugar zap.SugaredLogger
+
+type (
+	gauge      float64
+	counter    int64
+	MemStorage struct {
+		mapa map[string]any
+		mu   sync.Mutex
+	}
+	responseData struct {
+		size   int
+		status int
+	}
+
+	loggingResponseWriter struct {
+		http.ResponseWriter
+		responseData *responseData
+	}
+)
 
 func NewMemStorage() *MemStorage {
 	return &MemStorage{
@@ -73,6 +89,19 @@ func (m *MemStorage) GetAll(w http.ResponseWriter, req *http.Request) {
 	io.WriteString(w, strings.Join(list, ", "))
 }
 
+func (l *loggingResponseWriter) Write(b []byte) (int, error) {
+	size, err := l.ResponseWriter.Write(b)
+	l.responseData.size += size
+
+	return size, err
+}
+
+func (l *loggingResponseWriter) WriteHeader(statusCode int) {
+	l.ResponseWriter.WriteHeader(statusCode)
+	fmt.Println(statusCode)
+	l.responseData.status = statusCode
+}
+
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 
@@ -109,6 +138,42 @@ func Middleware(next http.Handler) http.Handler {
 		// fmt.Println(time.Now())
 		next.ServeHTTP(w, req)
 	})
+}
+
+func Logging(h http.Handler) http.Handler {
+	logFn := func(w http.ResponseWriter, req *http.Request) {
+
+		logger, err := zap.NewDevelopment()
+		if err != nil {
+			panic(err)
+		}
+		defer logger.Sync()
+
+		sugar = *logger.Sugar()
+
+		rd := &responseData{
+			status: 200,
+			size:   0,
+		}
+
+		lw := loggingResponseWriter{
+			ResponseWriter: w,
+			responseData:   rd,
+		}
+
+		start := time.Now()
+		h.ServeHTTP(&lw, req)
+		duration := time.Since(start)
+
+		sugar.Infoln(
+			"Method", req.Method,
+			"URI", req.RequestURI,
+			"Status", rd.status,
+			"Size", rd.size,
+			"Duration", duration,
+		)
+	}
+	return http.HandlerFunc(logFn)
 }
 
 func IsCounter(input string) bool {
