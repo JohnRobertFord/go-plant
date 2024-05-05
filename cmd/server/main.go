@@ -16,7 +16,7 @@ func MetricRouter() chi.Router {
 	m := server.NewMemStorage()
 
 	r := chi.NewRouter()
-	r.Use(server.Middleware)
+	r.Use(server.Logging, server.Middleware)
 	r.Use(middleware.SetHeader("Content-Type", "text/plain"))
 	r.Get("/", m.GetAll)
 	r.Route("/update", func(r chi.Router) {
