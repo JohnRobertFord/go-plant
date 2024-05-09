@@ -137,6 +137,7 @@ func (m *MemStorage) GetJSONMetric(w http.ResponseWriter, req *http.Request) {
 		}
 		return
 	}
+	defer req.Body.Close()
 	var out []metrics.Element
 	for _, el := range in {
 
@@ -158,7 +159,6 @@ func (m *MemStorage) GetJSONMetric(w http.ResponseWriter, req *http.Request) {
 	o, _ := json.Marshal(out)
 
 	io.WriteString(w, fmt.Sprintf("%s\n", o))
-	defer req.Body.Close()
 }
 
 func (m *MemStorage) GetAll(w http.ResponseWriter, req *http.Request) {
@@ -189,9 +189,9 @@ func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 
 		path := strings.Split(req.URL.Path, "/")
-		if req.Method == http.MethodPost && path[1] == "update" && len(path) == 2 {
+		if req.Method == http.MethodPost && path[1] == "update" && len(path) == 3 {
 			// check valid REQUEST
-		} else if req.Method == http.MethodPost && path[1] == "value" && len(path) == 2 {
+		} else if req.Method == http.MethodPost && path[1] == "value" && len(path) == 3 {
 			// check valid REQUEST
 		} else if req.Method == http.MethodPost {
 			req.Header.Set("Accept", "*/*")

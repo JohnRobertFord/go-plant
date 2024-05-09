@@ -121,7 +121,7 @@ func SendJSONData(els []Element) {
 	}
 
 	r := bytes.NewReader(ret)
-	resp, err := http.Post("http://"+*remote+"/update", "application/json", r)
+	resp, err := http.Post("http://"+*remote+"/update/", "application/json", r)
 	if err != nil {
 		fmt.Println(err)
 		return
