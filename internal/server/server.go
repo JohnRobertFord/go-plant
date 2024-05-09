@@ -85,9 +85,11 @@ func (m *MemStorage) WriteJSONMetrics(w http.ResponseWriter, req *http.Request) 
 			m.mapa[el.ID] = *el.Value
 		} else if el.MType == "counter" {
 			if c, ok := m.mapa[el.ID].(int64); ok {
+				fmt.Println(c, el.Delta)
 				c += *el.Delta
 				m.mapa[el.ID] = c
 			} else {
+				fmt.Println("LOL", c, el.Delta)
 				m.mapa[el.ID] = *el.Delta
 			}
 		} else {
@@ -104,14 +106,14 @@ func (m *MemStorage) GetMetric(w http.ResponseWriter, req *http.Request) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	metric := strings.Split(req.URL.Path, "/")[3]
-	res, ok := m.mapa[metric]
+	ID := strings.Split(req.URL.Path, "/")[3]
+	res, ok := m.mapa[ID]
 	if !ok {
 		http.Error(w, "Metric Not Found", http.StatusNotFound)
 		return
 	}
 
-	io.WriteString(w, fmt.Sprintf("%v", res))
+	io.WriteString(w, fmt.Sprintf("%v\n", res))
 }
 
 func (m *MemStorage) GetJSONMetric(w http.ResponseWriter, req *http.Request) {
