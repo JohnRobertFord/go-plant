@@ -56,11 +56,11 @@ func (m *MemStorage) WriteMetric(w http.ResponseWriter, req *http.Request) {
 		}
 	case "counter":
 		if i, err := strconv.ParseInt(input, 10, 64); err == nil {
-			if c, ok := m.mapa[metric].(counter); ok {
-				c += counter(i)
+			if c, ok := m.mapa[metric].(int64); ok {
+				c += i
 				m.mapa[metric] = c
 			} else {
-				m.mapa[metric] = counter(i)
+				m.mapa[metric] = i
 			}
 		}
 	}
@@ -85,11 +85,9 @@ func (m *MemStorage) WriteJSONMetrics(w http.ResponseWriter, req *http.Request) 
 			m.mapa[el.ID] = *el.Value
 		} else if el.MType == "counter" {
 			if c, ok := m.mapa[el.ID].(int64); ok {
-				fmt.Println(c, el.Delta)
 				c += *el.Delta
 				m.mapa[el.ID] = c
 			} else {
-				fmt.Println("LOL", c, el.Delta)
 				m.mapa[el.ID] = *el.Delta
 			}
 		} else {
