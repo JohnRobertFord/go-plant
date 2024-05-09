@@ -1,6 +1,8 @@
 package server
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/JohnRobertFord/go-plant/internal/metrics"
 	"go.uber.org/zap"
 )
 
@@ -64,6 +67,39 @@ func (m *MemStorage) WriteMetric(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (m *MemStorage) WriteJSONMetrics(w http.ResponseWriter, req *http.Request) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	decoder := json.NewDecoder(req.Body)
+	var out []metrics.Element
+	err := decoder.Decode(&out)
+	if err != nil {
+		if !errors.Is(err, io.EOF) {
+			fmt.Println(err)
+		}
+	}
+	for _, el := range out {
+
+		if el.MType == "gauge" {
+			m.mapa[el.ID] = *el.Value
+		} else if el.MType == "counter" {
+			if c, ok := m.mapa[el.ID].(int64); ok {
+				c += *el.Delta
+				m.mapa[el.ID] = c
+			} else {
+				m.mapa[el.ID] = *el.Delta
+			}
+		} else {
+			continue
+		}
+	}
+
+	defer req.Body.Close()
+	w.WriteHeader(http.StatusOK)
+
+}
+
 func (m *MemStorage) GetMetric(w http.ResponseWriter, req *http.Request) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -76,6 +112,42 @@ func (m *MemStorage) GetMetric(w http.ResponseWriter, req *http.Request) {
 	}
 
 	io.WriteString(w, fmt.Sprintf("%v", res))
+}
+
+func (m *MemStorage) GetJSONMetric(w http.ResponseWriter, req *http.Request) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	decoder := json.NewDecoder(req.Body)
+	var in []metrics.Element
+	err := decoder.Decode(&in)
+	if err != nil {
+		if !errors.Is(err, io.EOF) {
+			fmt.Println(err)
+		}
+		return
+	}
+	var out []metrics.Element
+	for _, el := range in {
+
+		temp := metrics.Element{
+			ID:    el.ID,
+			MType: el.MType,
+		}
+		if el.MType == "gauge" {
+			if f, ok := m.mapa[el.ID].(float64); ok {
+				temp.Value = &f
+			}
+		} else if el.MType == "counter" {
+			if c, ok := m.mapa[el.ID].(int64); ok {
+				temp.Delta = &c
+			}
+		}
+		out = append(out, temp)
+	}
+	o, _ := json.Marshal(out)
+
+	io.WriteString(w, fmt.Sprintf("%s\n", o))
 }
 
 func (m *MemStorage) GetAll(w http.ResponseWriter, req *http.Request) {
@@ -98,7 +170,6 @@ func (l *loggingResponseWriter) Write(b []byte) (int, error) {
 
 func (l *loggingResponseWriter) WriteHeader(statusCode int) {
 	l.ResponseWriter.WriteHeader(statusCode)
-	fmt.Println(statusCode)
 	l.responseData.status = statusCode
 }
 
@@ -106,8 +177,11 @@ func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 
 		path := strings.Split(req.URL.Path, "/")
-		if req.Method == http.MethodPost {
-
+		if req.Method == http.MethodPost && path[1] == "update" && len(path) == 2 {
+			// check valid REQUEST
+		} else if req.Method == http.MethodPost && path[1] == "value" && len(path) == 2 {
+			// check valid REQUEST
+		} else if req.Method == http.MethodPost {
 			req.Header.Set("Accept", "*/*")
 			if len(path) != 5 {
 				http.Error(w, "Not Found", http.StatusNotFound)
@@ -135,7 +209,6 @@ func Middleware(next http.Handler) http.Handler {
 			http.Error(w, "Only POST or GET requests are allowed!", http.StatusMethodNotAllowed)
 			return
 		}
-		// fmt.Println(time.Now())
 		next.ServeHTTP(w, req)
 	})
 }
