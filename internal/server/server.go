@@ -71,6 +71,7 @@ func (m *MemStorage) WriteJSONMetrics(w http.ResponseWriter, req *http.Request) 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	w.Header().Add("Content-Type", "application/json")
 	decoder := json.NewDecoder(req.Body)
 	var in []metrics.Element
 	err := decoder.Decode(&in)
@@ -128,6 +129,7 @@ func (m *MemStorage) GetJSONMetric(w http.ResponseWriter, req *http.Request) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	w.Header().Add("Content-Type", "application/json")
 	decoder := json.NewDecoder(req.Body)
 	var in []metrics.Element
 	err := decoder.Decode(&in)
