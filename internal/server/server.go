@@ -18,8 +18,8 @@ import (
 var sugar zap.SugaredLogger
 
 type (
-	gauge      float64
-	counter    int64
+	gauge float64
+	// counter    int64
 	MemStorage struct {
 		mapa map[string]any
 		mu   sync.Mutex
@@ -72,31 +72,41 @@ func (m *MemStorage) WriteJSONMetrics(w http.ResponseWriter, req *http.Request) 
 	defer m.mu.Unlock()
 
 	decoder := json.NewDecoder(req.Body)
-	var out []metrics.Element
-	err := decoder.Decode(&out)
+	var in []metrics.Element
+	err := decoder.Decode(&in)
 	if err != nil {
 		if !errors.Is(err, io.EOF) {
 			fmt.Println(err)
 		}
 	}
-	for _, el := range out {
+	defer req.Body.Close()
 
+	var out []metrics.Element
+	for _, el := range in {
+		temp := metrics.Element{
+			ID:    el.ID,
+			MType: el.MType,
+		}
 		if el.MType == "gauge" {
 			m.mapa[el.ID] = *el.Value
+			temp.Value = el.Value
 		} else if el.MType == "counter" {
 			if c, ok := m.mapa[el.ID].(int64); ok {
 				c += *el.Delta
 				m.mapa[el.ID] = c
+				temp.Delta = &c
 			} else {
 				m.mapa[el.ID] = *el.Delta
+				temp.Delta = el.Delta
 			}
 		} else {
 			continue
 		}
+		out = append(out, temp)
 	}
 
-	defer req.Body.Close()
-	w.WriteHeader(http.StatusOK)
+	o, _ := json.Marshal(out)
+	io.WriteString(w, fmt.Sprintf("%s\n", o))
 
 }
 
@@ -148,6 +158,7 @@ func (m *MemStorage) GetJSONMetric(w http.ResponseWriter, req *http.Request) {
 	o, _ := json.Marshal(out)
 
 	io.WriteString(w, fmt.Sprintf("%s\n", o))
+	defer req.Body.Close()
 }
 
 func (m *MemStorage) GetAll(w http.ResponseWriter, req *http.Request) {
@@ -159,6 +170,7 @@ func (m *MemStorage) GetAll(w http.ResponseWriter, req *http.Request) {
 	}
 
 	io.WriteString(w, strings.Join(list, ", "))
+	w.WriteHeader(http.StatusOK)
 }
 
 func (l *loggingResponseWriter) Write(b []byte) (int, error) {
