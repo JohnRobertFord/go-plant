@@ -63,6 +63,7 @@ func (m *MemStorage) WriteMetric(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 	}
+	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -70,7 +71,6 @@ func (m *MemStorage) WriteJSONMetrics(w http.ResponseWriter, req *http.Request) 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	w.Header().Set("Content-Type", "application/json")
 	decoder := json.NewDecoder(req.Body)
 	var in []metrics.Element
 	err := decoder.Decode(&in)
@@ -122,7 +122,7 @@ func (m *MemStorage) GetMetric(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "Metric Not Found", http.StatusNotFound)
 		return
 	}
-
+	w.Header().Set("Content-Type", "text/plain")
 	io.WriteString(w, fmt.Sprintf("%v\n", res))
 }
 
@@ -170,6 +170,7 @@ func (m *MemStorage) GetAll(w http.ResponseWriter, req *http.Request) {
 		list = append(list, k)
 	}
 
+	w.Header().Set("Content-Type", "text/plain")
 	io.WriteString(w, strings.Join(list, ", "))
 	w.WriteHeader(http.StatusOK)
 }

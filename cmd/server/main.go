@@ -9,7 +9,6 @@ import (
 
 	"github.com/JohnRobertFord/go-plant/internal/server"
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 )
 
 func MetricRouter() chi.Router {
@@ -17,7 +16,7 @@ func MetricRouter() chi.Router {
 
 	r := chi.NewRouter()
 	r.Use(server.Logging, server.Middleware)
-	r.Use(middleware.SetHeader("Content-Type", "text/plain"))
+	// r.Use(middleware.SetHeader("Content-Type", "text/plain"))
 	r.Get("/", m.GetAll)
 	r.Route("/update/", func(r chi.Router) {
 		r.Post("/", m.WriteJSONMetrics)
