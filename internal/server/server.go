@@ -105,7 +105,10 @@ func (m *MemStorage) WriteJSONMetrics(w http.ResponseWriter, req *http.Request) 
 	}
 
 	o, _ := json.Marshal(out)
-	io.WriteString(w, fmt.Sprintf("%s\n", o))
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(o)
+	// w.WriteHeader(http.StatusOK)
+	// io.WriteString(w, fmt.Sprintf("%s\n", o))
 
 }
 
@@ -127,7 +130,6 @@ func (m *MemStorage) GetJSONMetric(w http.ResponseWriter, req *http.Request) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	w.Header().Set("Content-Type", "application/json")
 	decoder := json.NewDecoder(req.Body)
 	var in []metrics.Element
 	err := decoder.Decode(&in)
@@ -156,8 +158,8 @@ func (m *MemStorage) GetJSONMetric(w http.ResponseWriter, req *http.Request) {
 	}
 	o, _ := json.Marshal(out)
 
+	w.Header().Set("Content-Type", "application/json")
 	w.Write(o)
-	// io.WriteString(w, fmt.Sprintf("%s\n", o))
 }
 
 func (m *MemStorage) GetAll(w http.ResponseWriter, req *http.Request) {
