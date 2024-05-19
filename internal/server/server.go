@@ -2,7 +2,6 @@ package server
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -71,14 +70,13 @@ func (m *MemStorage) WriteJSONMetrics(w http.ResponseWriter, req *http.Request) 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	w.Header().Add("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json")
 	decoder := json.NewDecoder(req.Body)
 	var in []metrics.Element
 	err := decoder.Decode(&in)
 	if err != nil {
-		if !errors.Is(err, io.EOF) {
-			fmt.Println(err)
-		}
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 	defer req.Body.Close()
 
@@ -129,14 +127,12 @@ func (m *MemStorage) GetJSONMetric(w http.ResponseWriter, req *http.Request) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	w.Header().Add("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json")
 	decoder := json.NewDecoder(req.Body)
 	var in []metrics.Element
 	err := decoder.Decode(&in)
 	if err != nil {
-		if !errors.Is(err, io.EOF) {
-			fmt.Println(err)
-		}
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	defer req.Body.Close()
@@ -160,7 +156,8 @@ func (m *MemStorage) GetJSONMetric(w http.ResponseWriter, req *http.Request) {
 	}
 	o, _ := json.Marshal(out)
 
-	io.WriteString(w, fmt.Sprintf("%s\n", o))
+	w.Write(o)
+	// io.WriteString(w, fmt.Sprintf("%s\n", o))
 }
 
 func (m *MemStorage) GetAll(w http.ResponseWriter, req *http.Request) {
