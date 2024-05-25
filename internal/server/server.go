@@ -72,8 +72,8 @@ func (m *MemStorage) WriteJSONMetrics(w http.ResponseWriter, req *http.Request) 
 	defer m.mu.Unlock()
 
 	decoder := json.NewDecoder(req.Body)
-	var in []metrics.Element
-	err := decoder.Decode(&in)
+	in := &[]metrics.Element{}
+	err := decoder.Decode(in)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -81,7 +81,7 @@ func (m *MemStorage) WriteJSONMetrics(w http.ResponseWriter, req *http.Request) 
 	defer req.Body.Close()
 
 	var out []metrics.Element
-	for _, el := range in {
+	for _, el := range *in {
 		temp := metrics.Element{
 			ID:    el.ID,
 			MType: el.MType,
@@ -130,16 +130,30 @@ func (m *MemStorage) GetJSONMetric(w http.ResponseWriter, req *http.Request) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	decoder := json.NewDecoder(req.Body)
-	var in []metrics.Element
-	err := decoder.Decode(&in)
+	in := &[]metrics.Element{}
+	// decoder := json.NewDecoder(req.Body)
+	// in := &metrics.Element{}
+	body, err := io.ReadAll(req.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if body[0] == 91 {
+		json.Unmarshal(body, in)
+	} else {
+		inOne := &metrics.Element{}
+		json.Unmarshal(body, inOne)
+		*in = append(*in, *inOne)
+	}
+	// if err := decoder.Decode(in); err != nil {
+	// 	http.Error(w, err.Error(), http.StatusBadRequest)
+	// 	return
+	// }
+
 	defer req.Body.Close()
+
 	var out []metrics.Element
-	for _, el := range in {
+	for _, el := range *in {
 
 		temp := metrics.Element{
 			ID:    el.ID,
@@ -156,6 +170,7 @@ func (m *MemStorage) GetJSONMetric(w http.ResponseWriter, req *http.Request) {
 		}
 		out = append(out, temp)
 	}
+	// o, _ := json.Marshal(temp)
 	o, _ := json.Marshal(out)
 
 	w.Header().Set("Content-Type", "application/json")
