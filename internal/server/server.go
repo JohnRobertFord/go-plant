@@ -72,6 +72,7 @@ func (m *MemStorage) WriteJSONMetrics(w http.ResponseWriter, req *http.Request) 
 	defer m.mu.Unlock()
 
 	decoder := json.NewDecoder(req.Body)
+
 	in := &[]metrics.Element{}
 	err := decoder.Decode(in)
 	if err != nil {
@@ -104,7 +105,11 @@ func (m *MemStorage) WriteJSONMetrics(w http.ResponseWriter, req *http.Request) 
 		out = append(out, temp)
 	}
 
-	o, _ := json.Marshal(out)
+	o, err := json.Marshal(out)
+	if err != nil {
+		fmt.Println("ERROR!")
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(o)
 	// w.WriteHeader(http.StatusOK)
@@ -130,48 +135,48 @@ func (m *MemStorage) GetJSONMetric(w http.ResponseWriter, req *http.Request) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	in := &[]metrics.Element{}
-	// decoder := json.NewDecoder(req.Body)
-	// in := &metrics.Element{}
-	body, err := io.ReadAll(req.Body)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	// in := &[]metrics.Element{}
+	// body, err := io.ReadAll(req.Body)
+	// if err != nil {
+	// http.Error(w, err.Error(), http.StatusBadRequest)
+	// return
+	// }
+	// if body[0] == 91 {
+	// 	json.Unmarshal(body, in)
+	// } else {
+	// 	inOne := &metrics.Element{}
+	// 	json.Unmarshal(body, inOne)
+	// 	*in = append(*in, *inOne)
+	// }
+	decoder := json.NewDecoder(req.Body)
+	in := &metrics.Element{}
+	if err := decoder.Decode(in); err != nil {
+		http.Error(w, "err.Error()", http.StatusBadRequest)
 		return
 	}
-	if body[0] == 91 {
-		json.Unmarshal(body, in)
-	} else {
-		inOne := &metrics.Element{}
-		json.Unmarshal(body, inOne)
-		*in = append(*in, *inOne)
-	}
-	// if err := decoder.Decode(in); err != nil {
-	// 	http.Error(w, err.Error(), http.StatusBadRequest)
-	// 	return
-	// }
 
 	defer req.Body.Close()
 
-	var out []metrics.Element
-	for _, el := range *in {
+	// var out []metrics.Element
+	// for _, el := range *in {
 
-		temp := metrics.Element{
-			ID:    el.ID,
-			MType: el.MType,
-		}
-		if el.MType == "gauge" {
-			if f, ok := m.mapa[el.ID].(float64); ok {
-				temp.Value = &f
-			}
-		} else if el.MType == "counter" {
-			if c, ok := m.mapa[el.ID].(int64); ok {
-				temp.Delta = &c
-			}
-		}
-		out = append(out, temp)
+	temp := metrics.Element{
+		ID:    in.ID,
+		MType: in.MType,
 	}
-	// o, _ := json.Marshal(temp)
-	o, _ := json.Marshal(out)
+	if in.MType == "gauge" {
+		if f, ok := m.mapa[in.ID].(float64); ok {
+			temp.Value = &f
+		}
+	} else if in.MType == "counter" {
+		if c, ok := m.mapa[in.ID].(int64); ok {
+			temp.Delta = &c
+		}
+	}
+	// out = append(out, temp)
+	// }
+	o, _ := json.Marshal(temp)
+	// o, _ := json.Marshal(out)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(o)

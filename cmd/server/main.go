@@ -16,7 +16,6 @@ func MetricRouter() chi.Router {
 
 	r := chi.NewRouter()
 	r.Use(server.Logging, server.Middleware)
-	// r.Use(middleware.SetHeader("Content-Type", "text/plain"))
 	r.Get("/", m.GetAll)
 	r.Route("/update/", func(r chi.Router) {
 		r.Post("/", m.WriteJSONMetrics)
