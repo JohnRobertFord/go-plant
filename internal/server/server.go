@@ -1,20 +1,38 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/JohnRobertFord/go-plant/internal/metrics"
+	"go.uber.org/zap"
 )
 
-type gauge float64
-type counter int64
-type MemStorage struct {
-	mapa map[string]any
-	mu   sync.Mutex
-}
+var sugar zap.SugaredLogger
+
+type (
+	gauge float64
+	// counter    int64
+	MemStorage struct {
+		mapa map[string]any
+		mu   sync.Mutex
+	}
+	responseData struct {
+		size   int
+		status int
+	}
+
+	loggingResponseWriter struct {
+		http.ResponseWriter
+		responseData *responseData
+	}
+)
 
 func NewMemStorage() *MemStorage {
 	return &MemStorage{
@@ -37,29 +55,131 @@ func (m *MemStorage) WriteMetric(w http.ResponseWriter, req *http.Request) {
 		}
 	case "counter":
 		if i, err := strconv.ParseInt(input, 10, 64); err == nil {
-			if c, ok := m.mapa[metric].(counter); ok {
-				c += counter(i)
+			if c, ok := m.mapa[metric].(int64); ok {
+				c += i
 				m.mapa[metric] = c
 			} else {
-				m.mapa[metric] = counter(i)
+				m.mapa[metric] = i
 			}
 		}
 	}
+	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
+}
+
+func (m *MemStorage) WriteJSONMetrics(w http.ResponseWriter, req *http.Request) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	decoder := json.NewDecoder(req.Body)
+
+	in := &[]metrics.Element{}
+	err := decoder.Decode(in)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	defer req.Body.Close()
+
+	var out []metrics.Element
+	for _, el := range *in {
+		temp := metrics.Element{
+			ID:    el.ID,
+			MType: el.MType,
+		}
+		if el.MType == "gauge" {
+			m.mapa[el.ID] = *el.Value
+			temp.Value = el.Value
+		} else if el.MType == "counter" {
+			if c, ok := m.mapa[el.ID].(int64); ok {
+				c += *el.Delta
+				m.mapa[el.ID] = c
+				temp.Delta = &c
+			} else {
+				m.mapa[el.ID] = *el.Delta
+				temp.Delta = el.Delta
+			}
+		} else {
+			continue
+		}
+		out = append(out, temp)
+	}
+
+	o, err := json.Marshal(out)
+	if err != nil {
+		fmt.Println("ERROR!")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(o)
+	// w.WriteHeader(http.StatusOK)
+	// io.WriteString(w, fmt.Sprintf("%s\n", o))
+
 }
 
 func (m *MemStorage) GetMetric(w http.ResponseWriter, req *http.Request) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	metric := strings.Split(req.URL.Path, "/")[3]
-	res, ok := m.mapa[metric]
+	ID := strings.Split(req.URL.Path, "/")[3]
+	res, ok := m.mapa[ID]
 	if !ok {
 		http.Error(w, "Metric Not Found", http.StatusNotFound)
 		return
 	}
+	w.Header().Set("Content-Type", "text/plain")
+	io.WriteString(w, fmt.Sprintf("%v\n", res))
+}
 
-	io.WriteString(w, fmt.Sprintf("%v", res))
+func (m *MemStorage) GetJSONMetric(w http.ResponseWriter, req *http.Request) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// in := &[]metrics.Element{}
+	// body, err := io.ReadAll(req.Body)
+	// if err != nil {
+	// http.Error(w, err.Error(), http.StatusBadRequest)
+	// return
+	// }
+	// if body[0] == 91 {
+	// 	json.Unmarshal(body, in)
+	// } else {
+	// 	inOne := &metrics.Element{}
+	// 	json.Unmarshal(body, inOne)
+	// 	*in = append(*in, *inOne)
+	// }
+	decoder := json.NewDecoder(req.Body)
+	in := &metrics.Element{}
+	if err := decoder.Decode(in); err != nil {
+		http.Error(w, "err.Error()", http.StatusBadRequest)
+		return
+	}
+
+	defer req.Body.Close()
+
+	// var out []metrics.Element
+	// for _, el := range *in {
+
+	temp := metrics.Element{
+		ID:    in.ID,
+		MType: in.MType,
+	}
+	if in.MType == "gauge" {
+		if f, ok := m.mapa[in.ID].(float64); ok {
+			temp.Value = &f
+		}
+	} else if in.MType == "counter" {
+		if c, ok := m.mapa[in.ID].(int64); ok {
+			temp.Delta = &c
+		}
+	}
+	// out = append(out, temp)
+	// }
+	o, _ := json.Marshal(temp)
+	// o, _ := json.Marshal(out)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(o)
 }
 
 func (m *MemStorage) GetAll(w http.ResponseWriter, req *http.Request) {
@@ -70,15 +190,32 @@ func (m *MemStorage) GetAll(w http.ResponseWriter, req *http.Request) {
 		list = append(list, k)
 	}
 
+	w.Header().Set("Content-Type", "text/plain")
 	io.WriteString(w, strings.Join(list, ", "))
+	w.WriteHeader(http.StatusOK)
+}
+
+func (l *loggingResponseWriter) Write(b []byte) (int, error) {
+	size, err := l.ResponseWriter.Write(b)
+	l.responseData.size += size
+
+	return size, err
+}
+
+func (l *loggingResponseWriter) WriteHeader(statusCode int) {
+	l.ResponseWriter.WriteHeader(statusCode)
+	l.responseData.status = statusCode
 }
 
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 
 		path := strings.Split(req.URL.Path, "/")
-		if req.Method == http.MethodPost {
-
+		if req.Method == http.MethodPost && path[1] == "update" && len(path) == 3 {
+			// check valid REQUEST
+		} else if req.Method == http.MethodPost && path[1] == "value" && len(path) == 3 {
+			// check valid REQUEST
+		} else if req.Method == http.MethodPost {
 			req.Header.Set("Accept", "*/*")
 			if len(path) != 5 {
 				http.Error(w, "Not Found", http.StatusNotFound)
@@ -106,9 +243,44 @@ func Middleware(next http.Handler) http.Handler {
 			http.Error(w, "Only POST or GET requests are allowed!", http.StatusMethodNotAllowed)
 			return
 		}
-		// fmt.Println(time.Now())
 		next.ServeHTTP(w, req)
 	})
+}
+
+func Logging(h http.Handler) http.Handler {
+	logFn := func(w http.ResponseWriter, req *http.Request) {
+
+		logger, err := zap.NewDevelopment()
+		if err != nil {
+			panic(err)
+		}
+		defer logger.Sync()
+
+		sugar = *logger.Sugar()
+
+		rd := &responseData{
+			status: 200,
+			size:   0,
+		}
+
+		lw := loggingResponseWriter{
+			ResponseWriter: w,
+			responseData:   rd,
+		}
+
+		start := time.Now()
+		h.ServeHTTP(&lw, req)
+		duration := time.Since(start)
+
+		sugar.Infoln(
+			"Method", req.Method,
+			"URI", req.RequestURI,
+			"Status", rd.status,
+			"Size", rd.size,
+			"Duration", duration,
+		)
+	}
+	return http.HandlerFunc(logFn)
 }
 
 func IsCounter(input string) bool {
