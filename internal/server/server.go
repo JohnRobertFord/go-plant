@@ -71,7 +71,6 @@ func (m *MemStorage) WriteJSONMetrics(w http.ResponseWriter, req *http.Request) 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	w.Header().Add("Content-Type", "application/json")
 	decoder := json.NewDecoder(req.Body)
 	var in []metrics.Element
 	err := decoder.Decode(&in)
@@ -107,6 +106,8 @@ func (m *MemStorage) WriteJSONMetrics(w http.ResponseWriter, req *http.Request) 
 	}
 
 	o, _ := json.Marshal(out)
+	w.Header().Del("Content-Type")
+	w.Header().Add("Content-Type", "application/json")
 	io.WriteString(w, fmt.Sprintf("%s\n", o))
 
 }
@@ -115,6 +116,7 @@ func (m *MemStorage) GetMetric(w http.ResponseWriter, req *http.Request) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	w.Header().Set("Content-Type", "text/plain")
 	ID := strings.Split(req.URL.Path, "/")[3]
 	res, ok := m.mapa[ID]
 	if !ok {
@@ -129,7 +131,6 @@ func (m *MemStorage) GetJSONMetric(w http.ResponseWriter, req *http.Request) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	w.Header().Add("Content-Type", "application/json")
 	decoder := json.NewDecoder(req.Body)
 	var in []metrics.Element
 	err := decoder.Decode(&in)
@@ -159,7 +160,8 @@ func (m *MemStorage) GetJSONMetric(w http.ResponseWriter, req *http.Request) {
 		out = append(out, temp)
 	}
 	o, _ := json.Marshal(out)
-
+	w.Header().Del("Content-Type")
+	w.Header().Add("Content-Type", "application/json")
 	io.WriteString(w, fmt.Sprintf("%s\n", o))
 }
 
