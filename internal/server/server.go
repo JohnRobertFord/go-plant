@@ -105,9 +105,9 @@ func (m *MemStorage) WriteJSONMetrics(w http.ResponseWriter, req *http.Request) 
 		out = append(out, temp)
 	}
 
+	w.WriteHeader(http.StatusOK)
 	o, _ := json.Marshal(out)
-	w.Header().Del("Content-Type")
-	w.Header().Add("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json")
 	io.WriteString(w, fmt.Sprintf("%s\n", o))
 
 }
@@ -159,9 +159,10 @@ func (m *MemStorage) GetJSONMetric(w http.ResponseWriter, req *http.Request) {
 		}
 		out = append(out, temp)
 	}
+
+	w.WriteHeader(http.StatusOK)
 	o, _ := json.Marshal(out)
-	w.Header().Del("Content-Type")
-	w.Header().Add("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json")
 	io.WriteString(w, fmt.Sprintf("%s\n", o))
 }
 
