@@ -20,7 +20,7 @@ func MetricRouter() chi.Router {
 	r.Use(middleware.SetHeader("Content-Type", "text/plain"))
 	r.Get("/", m.GetAll)
 	r.Route("/update/", func(r chi.Router) {
-		r.Post("/", m.WriteJSONMetrics)
+		r.Post("/", m.WriteJSONMetric)
 		r.Post("/{MT}/{M}/{V}", m.WriteMetric)
 	})
 	r.Route("/value/", func(r chi.Router) {
