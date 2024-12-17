@@ -1,6 +1,7 @@
 package server
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,10 +29,17 @@ type (
 		size   int
 		status int
 	}
-
 	loggingResponseWriter struct {
 		http.ResponseWriter
 		responseData *responseData
+	}
+	compressWriter struct {
+		w  http.ResponseWriter
+		zw *gzip.Writer
+	}
+	compressReader struct {
+		r  io.ReadCloser
+		zr *gzip.Reader
 	}
 )
 
@@ -78,8 +86,6 @@ func (m *MemStorage) WriteJSONMetric(w http.ResponseWriter, req *http.Request) {
 	defer req.Body.Close()
 
 	if data[0] != '[' {
-		fmt.Println("here")
-
 		var in metrics.Element
 		err = json.Unmarshal(data, &in)
 		if err != nil {
@@ -109,7 +115,7 @@ func (m *MemStorage) WriteJSONMetric(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Header().Set("Content-Type", "application/json")
 		io.WriteString(w, fmt.Sprintf("%s\n", o))
-	} else {
+	} else if data[0] == '[' {
 		var in []metrics.Element
 		err = json.Unmarshal(data, &in)
 		if err != nil {
@@ -145,62 +151,10 @@ func (m *MemStorage) WriteJSONMetric(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Header().Set("Content-Type", "application/json")
 		io.WriteString(w, fmt.Sprintf("%s\n", o))
+	} else {
+		w.WriteHeader(http.StatusBadRequest)
+		return
 	}
-	// case []interface{}:
-	// 	var out []metrics.Element
-
-	// 	for _, el := range input.([]interface{}) {
-	// 		var in metrics.Element
-	// 		fmt.Println(el)
-	// 		for k, v := range el.(map[string]interface{}) {
-	// 			switch k {
-	// 			case "id":
-	// 				in.ID, _ = v.(string)
-	// 			case "type":
-	// 				in.MType, _ = v.(string)
-	// 			case "value":
-	// 				// val_f, _ := strconv.ParseFloat(v.(string), 64)
-	// 				fmt.Println(v)
-	// 				val_f, _ := v.(float64)
-	// 				in.Value = &val_f
-	// 			case "delta":
-	// 				val_i, _ := strconv.ParseInt(v.(string), 10, 64)
-	// 				in.Delta = &val_i
-	// 			default:
-	// 				w.WriteHeader(http.StatusBadRequest)
-	// 				return
-	// 			}
-	// 		}
-
-	// 		temp := metrics.Element{
-	// 			ID:    in.ID,
-	// 			MType: in.MType,
-	// 		}
-	// 		if in.MType == "gauge" {
-	// 			m.mapa[in.ID] = *in.Value
-	// 			temp.Value = in.Value
-	// 		} else if in.MType == "counter" {
-	// 			if c, ok := m.mapa[in.ID].(int64); ok {
-	// 				c += *in.Delta
-	// 				m.mapa[in.ID] = c
-	// 				temp.Delta = &c
-	// 			} else {
-	// 				m.mapa[in.ID] = *in.Delta
-	// 				temp.Delta = in.Delta
-	// 			}
-	// 		} else {
-	// 			continue
-	// 		}
-	// 		out = append(out, temp)
-	// 	}
-
-	// 	o, _ := json.Marshal(out)
-	// 	w.WriteHeader(http.StatusOK)
-	// 	w.Header().Set("Content-Type", "application/json")
-	// 	io.WriteString(w, fmt.Sprintf("%s\n", o))
-	// default:
-	// 	fmt.Printf("an unknown type of input,%s\n", reflect.TypeOf(input))
-	// }
 }
 
 func (m *MemStorage) GetMetric(w http.ResponseWriter, req *http.Request) {
@@ -260,8 +214,8 @@ func (m *MemStorage) GetJSONMetric(w http.ResponseWriter, req *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	o, _ := json.Marshal(out)
-	w.Write(o)
-	// io.WriteString(w, fmt.Sprintf("%s\n", o))
+	// w.Write(o)
+	io.WriteString(w, fmt.Sprintf("%s\n", o))
 }
 
 func (m *MemStorage) GetAll(w http.ResponseWriter, req *http.Request) {
@@ -288,6 +242,53 @@ func (l *loggingResponseWriter) WriteHeader(statusCode int) {
 	l.responseData.status = statusCode
 }
 
+func newCompressWriter(w http.ResponseWriter) *compressWriter {
+	return &compressWriter{
+		w:  w,
+		zw: gzip.NewWriter(w),
+	}
+}
+
+func (c *compressWriter) Header() http.Header {
+	return c.w.Header()
+}
+
+func (c *compressWriter) Write(p []byte) (int, error) {
+	return c.w.Write(p)
+}
+
+func (c *compressWriter) WriteHeader(statusCode int) {
+	if statusCode < 300 {
+		c.w.Header().Set("Content-Encoding", "gzip")
+	}
+	c.w.WriteHeader(statusCode)
+}
+
+func (c *compressWriter) Close() error {
+	return c.zw.Close()
+}
+
+func newCompressReader(r io.ReadCloser) (*compressReader, error) {
+	zr, err := gzip.NewReader(r)
+	if err != nil {
+		return nil, err
+	}
+	return &compressReader{
+		r:  r,
+		zr: zr,
+	}, nil
+}
+
+func (c compressReader) Read(p []byte) (n int, err error) {
+	return c.zr.Read(p)
+}
+func (c compressReader) Close() error {
+	if err := c.r.Close(); err != nil {
+		return err
+	}
+	return c.zr.Close()
+}
+
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 
@@ -304,8 +305,8 @@ func Middleware(next http.Handler) http.Handler {
 			}
 
 			val := path[4]
-			if (strings.Compare(path[2], "counter") != 0 || !IsCounter(val)) &&
-				(strings.Compare(path[2], "gauge") != 0 || !IsGauge(val)) {
+			if (strings.Compare(path[2], "counter") != 0 || !metrics.IsCounter(val)) &&
+				(strings.Compare(path[2], "gauge") != 0 || !metrics.IsGauge(val)) {
 				http.Error(w, "Bad Request!", http.StatusBadRequest)
 				return
 			}
@@ -364,16 +365,41 @@ func Logging(h http.Handler) http.Handler {
 	return http.HandlerFunc(logFn)
 }
 
-func IsCounter(input string) bool {
-	if _, err := strconv.ParseInt(input, 10, 64); err == nil {
-		return true
-	}
-	return false
-}
+func GzipMiddleware(next http.Handler) http.Handler {
+	gzipFn := func(w http.ResponseWriter, req *http.Request) {
 
-func IsGauge(input string) bool {
-	if _, err := strconv.ParseFloat(input, 64); err == nil {
-		return true
+		ow := w
+
+		// проверяем, что клиент умеет получать от сервера сжатые данные в формате gzip
+		acceptEncoding := req.Header.Get("Accept-Encoding")
+		supportsGzip := strings.Contains(acceptEncoding, "gzip")
+		if supportsGzip {
+			// оборачиваем оригинальный http.ResponseWriter новым с поддержкой сжатия
+			cw := newCompressWriter(w)
+			// меняем оригинальный http.ResponseWriter на новый
+			ow = cw
+			// не забываем отправить клиенту все сжатые данные после завершения middleware
+			defer cw.Close()
+		}
+
+		// проверяем, что клиент отправил серверу сжатые данные в формате gzip
+		contentEncoding := req.Header.Get("Content-Encoding")
+		sendsGzip := strings.Contains(contentEncoding, "gzip")
+		if sendsGzip {
+			// оборачиваем тело запроса в io.Reader с поддержкой декомпрессии
+			cr, err := newCompressReader(req.Body)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			// меняем тело запроса на новое
+			req.Body = cr
+			defer cr.Close()
+		}
+
+		// передаём управление хендлеру
+		next.ServeHTTP(ow, req)
 	}
-	return false
+
+	return http.HandlerFunc(gzipFn)
 }
