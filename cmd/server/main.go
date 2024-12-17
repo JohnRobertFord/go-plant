@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/JohnRobertFord/go-plant/internal/compress"
+	"github.com/JohnRobertFord/go-plant/internal/logger"
 	"github.com/JohnRobertFord/go-plant/internal/server"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -16,7 +18,7 @@ func MetricRouter() chi.Router {
 	m := server.NewMemStorage()
 
 	r := chi.NewRouter()
-	r.Use(server.Logging, server.GzipMiddleware, server.Middleware)
+	r.Use(logger.Logging, compress.GzipMiddleware, server.Middleware)
 	r.Use(middleware.SetHeader("Content-Type", "text/plain"))
 	r.Get("/", m.GetAll)
 	r.Route("/update/", func(r chi.Router) {
