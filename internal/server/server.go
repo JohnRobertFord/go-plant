@@ -5,27 +5,80 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/JohnRobertFord/go-plant/internal/config"
 	"github.com/JohnRobertFord/go-plant/internal/metrics"
 )
 
 type (
 	gauge float64
 	// counter    int64
+
 	MemStorage struct {
 		mapa map[string]any
 		mu   sync.Mutex
+		cfg  *config.Config
 	}
 )
 
-func NewMemStorage() *MemStorage {
+func NewMemStorage(c *config.Config) *MemStorage {
 	return &MemStorage{
 		mapa: make(map[string]any),
+		cfg:  c,
 	}
+}
+
+func (m *MemStorage) Read4File(filename string) {
+	log.Printf("Restore from: %s", filename)
+	dataFile, err := os.Open(filename)
+	if err != nil {
+		fmt.Printf("err.Error()")
+	}
+	var in []metrics.Element
+	jsonParser := json.NewDecoder(dataFile)
+	if err = jsonParser.Decode(&in); err != nil {
+		fmt.Println("Wrong format metric data")
+	}
+
+	for _, el := range in {
+		if el.MType == "gauge" && el.Value != nil {
+			m.mapa[el.ID] = *el.Value
+		} else if el.MType == "counter" && el.Delta != nil {
+			m.mapa[el.ID] = *el.Delta
+		} else {
+			log.Printf("error read \"%s\" metric", el.ID)
+			continue
+		}
+	}
+}
+
+func Write2File(m *MemStorage) error {
+
+	file, err := os.OpenFile(m.cfg.FilePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	var buf []string
+	for k, v := range m.mapa {
+		switch v.(type) {
+		case int64:
+			buf = append(buf, fmt.Sprintf("{\"id\":\"%s\",\"type\":\"counter\",\"delta\":%v}", k, v))
+		case float64:
+			buf = append(buf, fmt.Sprintf("{\"id\":\"%s\",\"type\":\"gauge\",\"value\":%v}", k, v))
+		default:
+			log.Printf("unknown type %s\n", v)
+		}
+	}
+	_, err = fmt.Fprintf(file, "[%s]", strings.Join(buf, ","))
+	return err
 }
 
 func (m *MemStorage) WriteMetric(w http.ResponseWriter, req *http.Request) {
@@ -92,6 +145,14 @@ func (m *MemStorage) WriteJSONMetric(w http.ResponseWriter, req *http.Request) {
 		}
 
 		o, _ := json.Marshal(out)
+
+		if m.cfg.StoreInterval == 0 {
+			err = Write2File(m)
+			if err != nil {
+				fmt.Println(err)
+			}
+		}
+
 		w.WriteHeader(http.StatusOK)
 		w.Header().Set("Content-Type", "application/json")
 		io.WriteString(w, fmt.Sprintf("%s\n", o))
@@ -128,6 +189,14 @@ func (m *MemStorage) WriteJSONMetric(w http.ResponseWriter, req *http.Request) {
 		}
 
 		o, _ := json.Marshal(out)
+
+		if m.cfg.StoreInterval == 0 {
+			err = Write2File(m)
+			if err != nil {
+				log.Println(err)
+			}
+		}
+
 		w.WriteHeader(http.StatusOK)
 		w.Header().Set("Content-Type", "application/json")
 		io.WriteString(w, fmt.Sprintf("%s\n", o))
@@ -193,7 +262,6 @@ func (m *MemStorage) GetJSONMetric(w http.ResponseWriter, req *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	o, _ := json.Marshal(out)
-	// w.Write(o)
 	io.WriteString(w, fmt.Sprintf("%s\n", o))
 }
 
@@ -205,8 +273,8 @@ func (m *MemStorage) GetAll(w http.ResponseWriter, req *http.Request) {
 		list = append(list, k)
 	}
 
-	io.WriteString(w, strings.Join(list, ", "))
-	w.WriteHeader(http.StatusOK)
+	io.WriteString(w, strings.Join(list, "\n"))
+	// w.WriteHeader(http.StatusOK)
 }
 
 func Middleware(next http.Handler) http.Handler {

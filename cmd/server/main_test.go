@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/JohnRobertFord/go-plant/internal/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,8 +27,8 @@ func testRequest(t *testing.T, ts *httptest.Server, method, path string) (*http.
 }
 
 func TestMetricRouter(t *testing.T) {
-
-	ts := httptest.NewServer(MetricRouter())
+	m := server.MemStorage{}
+	ts := httptest.NewServer(MetricRouter(&m))
 	defer ts.Close()
 
 	var tests = []struct {
