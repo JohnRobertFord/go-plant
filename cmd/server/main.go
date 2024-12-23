@@ -51,15 +51,21 @@ func main() {
 	}
 
 	if cfg.StoreInterval > 0 {
-		go func(m *server.MemStorage, t int) {
-			ticker := time.NewTicker(time.Duration(t) * time.Second)
+
+		saveticker := time.NewTicker(time.Duration(cfg.StoreInterval) * time.Second)
+
+		go func(m *server.MemStorage, ticker *time.Ticker) {
+			ch := make(chan int)
+			close(ch)
 			for {
 				select {
 				case <-ticker.C:
 					server.Write2File(m)
+				default:
+					time.Sleep(1 * time.Second)
 				}
 			}
-		}(mem, cfg.StoreInterval)
+		}(mem, saveticker)
 	}
 
 	log.Fatal(httpServer.ListenAndServe())
