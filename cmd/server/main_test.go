@@ -2,10 +2,12 @@ package main
 
 import (
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/JohnRobertFord/go-plant/internal/config"
 	"github.com/JohnRobertFord/go-plant/internal/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -27,8 +29,13 @@ func testRequest(t *testing.T, ts *httptest.Server, method, path string) (*http.
 }
 
 func TestMetricRouter(t *testing.T) {
-	m := server.MemStorage{}
-	ts := httptest.NewServer(MetricRouter(&m))
+	cfg, err := config.InitConfig()
+	if err != nil {
+		log.Fatalf("cant start server: %e", err)
+	}
+
+	m := server.NewMemStorage(cfg)
+	ts := httptest.NewServer(MetricRouter(m))
 	defer ts.Close()
 
 	var tests = []struct {
