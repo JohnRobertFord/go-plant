@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -13,14 +15,15 @@ import (
 
 var pollInterval = 2
 var reportInterval = 10
-var remote *string
 var pollInt *int
 var repInt *int
+var remote *string
 
 type Element struct {
-	MetricType  string
-	MetricName  string
-	MetricValue float64
+	ID    string   `json:"id"`
+	MType string   `json:"type"`
+	Delta *int64   `json:"delta,omitempty"`
+	Value *float64 `json:"value,omitempty"`
 }
 
 type Metrics struct {
@@ -32,17 +35,25 @@ type Metrics struct {
 func FormatMetric(t string, name string, value uint64) Element {
 	val := float64(value)
 	return Element{
-		MetricType:  t,
-		MetricName:  name,
-		MetricValue: val,
+		ID:    name,
+		MType: t,
+		Value: &val,
 	}
 }
 
 func FormatFloatMetric(t string, name string, value float64) Element {
 	return Element{
-		MetricType:  t,
-		MetricName:  name,
-		MetricValue: value,
+		ID:    name,
+		MType: t,
+		Value: &value,
+	}
+}
+
+func FormatCounter(t string, name string, value int64) Element {
+	return Element{
+		ID:    name,
+		MType: t,
+		Delta: &value,
 	}
 }
 
@@ -75,7 +86,7 @@ func (m *Metrics) GetMetrics() []Element {
 	metrics[24] = FormatMetric("gauge", "Sys", m.memstats.Sys)
 	metrics[25] = FormatMetric("gauge", "TotalAlloc", m.memstats.TotalAlloc)
 	metrics[26] = FormatFloatMetric("gauge", "GCCPUFraction", m.memstats.GCCPUFraction)
-	metrics[27] = FormatMetric("counter", "PollCount", 1)
+	metrics[27] = FormatCounter("counter", "PollCount", 1)
 	metrics[28] = FormatMetric("gauge", "RandomValue", rand.Uint64())
 
 	return metrics
@@ -90,35 +101,34 @@ func SendMetric(val string) {
 	defer resp.Body.Close()
 }
 
-func SendData(els []Element) {
+func PrepareData(els []Element) {
 	var str string
 	for _, el := range els {
-		str = fmt.Sprint("http://", *remote, "/update/", el.MetricType, "/", el.MetricName, "/", el.MetricValue)
+		if el.MType == "gauge" {
+			str = fmt.Sprintf("http://%s/update/%s/%s/%v", *remote, el.MType, el.ID, *(el.Value))
+		} else {
+			str = fmt.Sprintf("http://%s/update/%s/%s/%v", *remote, el.MType, el.ID, *(el.Delta))
+		}
 		SendMetric(str)
 	}
 }
 
-// func SendData(els []Element, m *sync.Mutex, t *time.Ticker) {
-// 	var str string
-// 	for range t.C {
-// 		m.Lock()
-// 		for _, el := range els {
-// 			str = fmt.Sprint("http://", *remote, "/update/", el.MetricType, "/", el.MetricName, "/", el.MetricValue)
-// 			SendMetric(str)
-// 		}
-// 		m.Unlock()
-// 	}
-// }
+func SendJSONData(els []Element) {
 
-// // func UpdateMetrics(memStats runtime.MemStats, m *sync.Mutex, t *time.Ticker) {
+	ret, err := json.Marshal(els)
+	if err != nil {
+		panic(err)
+	}
 
-// // 	for range t.C {
-// // 		log.Println("LOL")
-// // 		m.Lock()
-// // 		runtime.ReadMemStats(&memStats)
-// // 		m.Unlock()
-// // 	}
-// // }
+	r := bytes.NewReader(ret)
+	resp, err := http.Post("http://"+*remote+"/update/", "application/json", r)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer resp.Body.Close()
+
+}
 
 func main() {
 
@@ -167,10 +177,11 @@ func main() {
 	// var m sync.Mutex
 
 	// go UpdateMetrics(*myM.memstats, &m, pollTicker)
-	// go SendData(myM.GetMetrics(), &m, reportTicker)
+	// go PrepareData(myM.GetMetrics(), &m, reportTicker)
 
 	runtime.ReadMemStats(myM.memstats)
-	SendData(myM.GetMetrics())
+	PrepareData(myM.GetMetrics())
+	SendJSONData(myM.GetMetrics())
 
 	if pInt <= rInt {
 		c := (rInt / pInt)
@@ -181,8 +192,8 @@ func main() {
 				runtime.ReadMemStats(myM.memstats)
 			}
 			time.Sleep(time.Duration(delta) * time.Second)
-			SendData(myM.GetMetrics())
+			PrepareData(myM.GetMetrics())
+			SendJSONData(myM.GetMetrics())
 		}
 	}
-
 }
