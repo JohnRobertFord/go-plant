@@ -27,10 +27,10 @@ func (l *loggingResponseWriter) Write(b []byte) (int, error) {
 	return size, err
 }
 
-// func (l *loggingResponseWriter) WriteHeader(statusCode int) {
-// 	l.ResponseWriter.WriteHeader(statusCode)
-// 	l.responseData.status = statusCode
-// }
+func (l *loggingResponseWriter) WriteHeader(statusCode int) {
+	l.ResponseWriter.WriteHeader(statusCode)
+	l.responseData.status = statusCode
+}
 
 func Logging(h http.Handler) http.Handler {
 	logFn := func(w http.ResponseWriter, req *http.Request) {
@@ -44,7 +44,7 @@ func Logging(h http.Handler) http.Handler {
 		sugar = *logger.Sugar()
 
 		rd := &responseData{
-			status: 200,
+			status: 0,
 			size:   0,
 		}
 

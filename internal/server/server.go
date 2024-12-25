@@ -200,9 +200,6 @@ func (m *MemStorage) WriteJSONMetric(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Header().Set("Content-Type", "application/json")
 		io.WriteString(w, fmt.Sprintf("%s\n", o))
-	} else {
-		w.WriteHeader(http.StatusBadRequest)
-		return
 	}
 }
 
@@ -268,13 +265,15 @@ func (m *MemStorage) GetJSONMetric(w http.ResponseWriter, req *http.Request) {
 func (m *MemStorage) GetAll(w http.ResponseWriter, req *http.Request) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	w.Header().Set("Content-Type", "text/html")
+
 	var list []string
 	for k := range m.mapa {
 		list = append(list, k)
 	}
 
-	io.WriteString(w, strings.Join(list, "\n"))
-	// w.WriteHeader(http.StatusOK)
+	w.WriteHeader(http.StatusOK)
+	io.WriteString(w, strings.Join(list, ", "))
 }
 
 func Middleware(next http.Handler) http.Handler {

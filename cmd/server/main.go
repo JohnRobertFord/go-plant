@@ -4,6 +4,9 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/JohnRobertFord/go-plant/internal/compress"
@@ -11,14 +14,12 @@ import (
 	"github.com/JohnRobertFord/go-plant/internal/logger"
 	"github.com/JohnRobertFord/go-plant/internal/server"
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 )
 
 func MetricRouter(m *server.MemStorage) chi.Router {
 
 	r := chi.NewRouter()
 	r.Use(logger.Logging, compress.GzipMiddleware, server.Middleware)
-	r.Use(middleware.SetHeader("Content-Type", "text/plain"))
 	r.Get("/", m.GetAll)
 	r.Route("/update/", func(r chi.Router) {
 		r.Post("/", m.WriteJSONMetric)
@@ -51,24 +52,27 @@ func main() {
 	}
 
 	if cfg.StoreInterval > 0 {
-
-		saveticker := time.NewTicker(time.Duration(cfg.StoreInterval) * time.Second)
-
-		go func(m *server.MemStorage, ticker *time.Ticker) {
-			ch := make(chan int)
-			close(ch)
+		sleep := time.Duration(cfg.StoreInterval) * time.Second
+		go func(m *server.MemStorage, t time.Duration) {
 			for {
-				select {
-				case <-ticker.C:
-					server.Write2File(m)
-				default:
-					time.Sleep(1 * time.Second)
-				}
+				<-time.After(t)
+				server.Write2File(m)
 			}
-		}(mem, saveticker)
+		}(mem, sleep)
 	}
 
-	log.Fatal(httpServer.ListenAndServe())
-	httpServer.Shutdown(context.Background())
+	go func() {
+		log.Fatal(httpServer.ListenAndServe())
+		httpServer.Shutdown(context.Background())
+	}()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan,
+		syscall.SIGINT,
+		syscall.SIGTERM,
+		syscall.SIGQUIT,
+	)
+	<-sigChan
+	server.Write2File(mem)
 
 }
