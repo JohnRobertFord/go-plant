@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/JohnRobertFord/go-plant/internal/config"
 	"github.com/JohnRobertFord/go-plant/internal/metrics"
+	"github.com/jackc/pgx/v5"
 )
 
 type (
@@ -274,6 +276,18 @@ func (m *MemStorage) GetAll(w http.ResponseWriter, req *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	io.WriteString(w, strings.Join(list, ", "))
+}
+
+func (m *MemStorage) Ping(w http.ResponseWriter, req *http.Request) {
+	conn, err := pgx.Connect(context.Background(), m.cfg.DatabaseDsn)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	} else {
+		w.WriteHeader(http.StatusOK)
+	}
+	defer conn.Close(context.Background())
+
 }
 
 func Middleware(next http.Handler) http.Handler {
