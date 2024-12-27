@@ -21,6 +21,7 @@ func MetricRouter(m *server.MemStorage) chi.Router {
 	r := chi.NewRouter()
 	r.Use(logger.Logging, compress.GzipMiddleware, server.Middleware)
 	r.Get("/", m.GetAll)
+	r.Get("/ping", m.Ping)
 	r.Route("/update/", func(r chi.Router) {
 		r.Post("/", m.WriteJSONMetric)
 		r.Post("/{MT}/{M}/{V}", m.WriteMetric)
