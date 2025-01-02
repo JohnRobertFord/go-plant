@@ -32,7 +32,7 @@ func main() {
 		storage = cache.NewMemStorage(cfg)
 	}
 
-	if cfg.Restore && cfg.DatabaseDsn == "" {
+	if cfg.Restore {
 		diskfile.Read4File(storage)
 	}
 
