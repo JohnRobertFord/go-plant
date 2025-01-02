@@ -42,12 +42,12 @@ func (p *postgres) Close() {
 func NewPostgresStorage(c *config.Config) *postgres {
 	ctx := context.Background()
 	pgOnce.Do(func() {
-		db_pool, err := pgxpool.New(ctx, c.DatabaseDsn)
+		dbPool, err := pgxpool.New(ctx, c.DatabaseDsn)
 		if err != nil {
 			fmt.Printf("unable to create connection pool: %v", err)
 			return
 		}
-		pgInstance = &postgres{db_pool, c}
+		pgInstance = &postgres{dbPool, c}
 	})
 	pgInstance.db.Exec(ctx, createTableQuery)
 
@@ -86,22 +86,22 @@ func (p *postgres) Insert(el metrics.Element) metrics.Element {
 			return metrics.Element{}
 		}
 
-		var out_delta int64
+		var outDelta int64
 		ex, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[metrics.Element])
 		if err != nil {
 			if err != pgx.ErrNoRows {
 				log.Printf("CollectRows error: %v, metric: %v", err, el.ID)
 				return metrics.Element{}
 			}
-			out_delta = *el.Delta
+			outDelta = *el.Delta
 		} else {
-			out_delta = *ex.Delta + *el.Delta
+			outDelta = *ex.Delta + *el.Delta
 		}
 
 		out := metrics.Element{
 			ID:    el.ID,
 			MType: el.MType,
-			Delta: &out_delta,
+			Delta: &outDelta,
 		}
 
 		_, err = p.db.Exec(ctx, insertWithConflictQuery, out.ID, out.MType, out.Value, out.Delta, out.Value, out.Delta)
