@@ -122,7 +122,7 @@ func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 
 		path := strings.Split(req.URL.Path, "/")
-		if req.Method == http.MethodPost && path[1] == "update" && len(path) == 3 {
+		if req.Method == http.MethodPost && strings.Contains(path[1], "update") && len(path) == 3 {
 			// check valid REQUEST
 		} else if req.Method == http.MethodPost && path[1] == "value" && len(path) == 3 {
 			// check valid REQUEST

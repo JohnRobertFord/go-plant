@@ -10,6 +10,7 @@ import (
 	"github.com/JohnRobertFord/go-plant/internal/handler"
 	"github.com/JohnRobertFord/go-plant/internal/logger"
 	"github.com/JohnRobertFord/go-plant/internal/storage/metrics"
+	"github.com/JohnRobertFord/go-plant/internal/storage/metrics/cache"
 	"github.com/go-chi/chi"
 )
 
@@ -25,7 +26,7 @@ func (s server) RunServer() {
 
 func NewMetricServer(cfg *config.Config, ms metrics.Storage) *server {
 	r := chi.NewRouter()
-	r.Use(logger.Logging, compress.GzipMiddleware)
+	r.Use(logger.Logging, compress.GzipMiddleware, cache.Middleware)
 
 	// r.MethodNotAllowed()
 
