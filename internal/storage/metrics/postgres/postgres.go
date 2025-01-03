@@ -2,7 +2,7 @@ package postgres
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"log"
 	"sync"
 
@@ -44,7 +44,7 @@ func NewPostgresStorage(c *config.Config) *postgres {
 	pgOnce.Do(func() {
 		dbPool, err := pgxpool.New(ctx, c.DatabaseDsn)
 		if err != nil {
-			fmt.Printf("unable to create connection pool: %v", err)
+			log.Printf("unable to create connection pool: %v", err)
 			return
 		}
 		pgInstance = &postgres{dbPool, c}
@@ -64,7 +64,7 @@ func (p *postgres) SelectAll() []metrics.Element {
 
 	elements, err := pgx.CollectRows(rows, pgx.RowToStructByName[metrics.Element])
 	if err != nil {
-		fmt.Printf("CollectRows error: %v\n", err)
+		log.Printf("CollectRows error: %v\n", err)
 		return nil
 	}
 
@@ -76,7 +76,7 @@ func (p *postgres) Insert(el metrics.Element) metrics.Element {
 	case "gauge":
 		_, err := p.db.Exec(ctx, insertWithConflictQuery, el.ID, el.MType, el.Value, el.Delta, el.Value, el.Delta)
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 			return metrics.Element{}
 		}
 		return el
@@ -89,7 +89,7 @@ func (p *postgres) Insert(el metrics.Element) metrics.Element {
 		var outDelta int64
 		ex, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[metrics.Element])
 		if err != nil {
-			if err != pgx.ErrNoRows {
+			if !errors.Is(err, pgx.ErrNoRows) {
 				log.Printf("CollectRows error: %v, metric: %v", err, el.ID)
 				return metrics.Element{}
 			}
@@ -106,7 +106,7 @@ func (p *postgres) Insert(el metrics.Element) metrics.Element {
 
 		_, err = p.db.Exec(ctx, insertWithConflictQuery, out.ID, out.MType, out.Value, out.Delta, out.Value, out.Delta)
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 			return metrics.Element{}
 		}
 		return out

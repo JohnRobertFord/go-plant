@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/JohnRobertFord/go-plant/internal/storage/metrics"
 	"github.com/JohnRobertFord/go-plant/internal/storage/metrics/diskfile"
@@ -18,7 +19,7 @@ import (
 
 func GetAll(ms metrics.Storage) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		fmt.Println("GetAll")
+		// fmt.Println("GetAll")
 
 		list := ms.SelectAll()
 		var out []string
@@ -34,30 +35,34 @@ func GetAll(ms metrics.Storage) http.HandlerFunc {
 func Ping(ms metrics.Storage) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 
-		fmt.Println("Ping")
+		// fmt.Println("Ping")
 		ctx := context.Background()
 		cfg := ms.GetConfig()
 
-		conn, err := pgx.Connect(ctx, cfg.DatabaseDsn)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		w.WriteHeader(http.StatusOK)
-
-		defer func(context context.Context) {
-			err := conn.Close(context)
-			if err != nil {
-				log.Printf("error while closing conntection: %e\n", err)
+		for i := 0; i < 3; i++ {
+			conn, err := pgx.Connect(ctx, cfg.DatabaseDsn)
+			if err == nil {
+				w.WriteHeader(http.StatusOK)
+				defer func(context context.Context) {
+					err := conn.Close(context)
+					if err != nil {
+						log.Printf("[ERR][DB] error while closing conntection: %s\n", err)
+					}
+				}(ctx)
+				return
 			}
-		}(ctx)
+
+			time.Sleep(time.Duration(i+1) * time.Second)
+			fmt.Printf("Connect to DB. Retry: %d\n", i+1)
+		}
+		log.Printf("[ERR][DB] failed to connect to %s\n", cfg.DatabaseDsn)
+		w.WriteHeader(http.StatusInternalServerError)
 	})
 }
 func WriteMetric(ms metrics.Storage) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 
-		fmt.Println("WriteMetric")
+		// fmt.Println("WriteMetric")
 
 		metrictype := strings.Split(req.URL.Path, "/")[2]
 		metric := strings.Split(req.URL.Path, "/")[3]
@@ -86,7 +91,7 @@ func WriteMetric(ms metrics.Storage) http.HandlerFunc {
 func WriteJSONMetric(ms metrics.Storage) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 
-		fmt.Println("WriteJSONMetric")
+		// fmt.Println("WriteJSONMetric")
 
 		data, err := io.ReadAll(req.Body)
 		if err != nil {
@@ -95,6 +100,7 @@ func WriteJSONMetric(ms metrics.Storage) http.HandlerFunc {
 		}
 		defer req.Body.Close()
 
+		cfg := ms.GetConfig()
 		if data[0] != '[' {
 			var in metrics.Element
 			err = json.Unmarshal(data, &in)
@@ -104,11 +110,10 @@ func WriteJSONMetric(ms metrics.Storage) http.HandlerFunc {
 			}
 
 			o, _ := json.Marshal(ms.Insert(in))
-			cfg := ms.GetConfig()
 			if cfg.StoreInterval == 0 {
 				err = diskfile.Write2File(ms)
 				if err != nil {
-					fmt.Println(err)
+					log.Printf("[ERR][FILE] %s", err)
 				}
 			}
 
@@ -129,13 +134,12 @@ func WriteJSONMetric(ms metrics.Storage) http.HandlerFunc {
 
 			o, _ := json.Marshal(out)
 
-			// if m.cfg.StoreInterval == 0 {
-			// 	// #rewrite
-			// 	err = Write2File(m)
-			// 	if err != nil {
-			// 		log.Println(err)
-			// 	}
-			// }
+			if cfg.StoreInterval == 0 {
+				err = diskfile.Write2File(ms)
+				if err != nil {
+					log.Printf("[ERR][FILE] %s", err)
+				}
+			}
 
 			w.WriteHeader(http.StatusOK)
 			w.Header().Set("Content-Type", "application/json")
@@ -146,7 +150,7 @@ func WriteJSONMetric(ms metrics.Storage) http.HandlerFunc {
 func GetJSONMetric(ms metrics.Storage) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 
-		fmt.Println("GetJSONMetric")
+		// fmt.Println("GetJSONMetric")
 
 		decoder := json.NewDecoder(req.Body)
 		var in metrics.Element
@@ -154,7 +158,7 @@ func GetJSONMetric(ms metrics.Storage) http.HandlerFunc {
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
 				w.WriteHeader(http.StatusBadRequest)
-				fmt.Println(err)
+				log.Printf("[ERR][JSON] %s", err)
 			}
 			return
 		}
@@ -176,7 +180,7 @@ func GetJSONMetric(ms metrics.Storage) http.HandlerFunc {
 func GetMetric(ms metrics.Storage) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 
-		fmt.Println("GetMetric")
+		// fmt.Println("GetMetric")
 
 		w.Header().Set("Content-Type", "text/plain")
 		metrictype := strings.Split(req.URL.Path, "/")[2]

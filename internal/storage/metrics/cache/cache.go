@@ -2,6 +2,7 @@ package cache
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -95,7 +96,7 @@ func (m *MemStorage) SelectAll() []metrics.Element {
 				temp.MType = "counter"
 				temp.Delta = &c
 			} else {
-				fmt.Println("error counter delta")
+				log.Println("error counter delta")
 				// return metrics.Element{}, fmt.Errorf("metric not found")
 			}
 		case float64:
@@ -103,7 +104,7 @@ func (m *MemStorage) SelectAll() []metrics.Element {
 				temp.MType = "gauge"
 				temp.Value = &f
 			} else {
-				fmt.Println("error gauge value")
+				log.Println("error gauge value")
 				// return metrics.Element{}, fmt.Errorf("metric not found")
 			}
 		default:

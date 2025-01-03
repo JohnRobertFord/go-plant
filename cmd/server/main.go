@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -42,7 +41,7 @@ func main() {
 			for {
 				<-time.After(t)
 				diskfile.Write2File(ms)
-				fmt.Println("Write2File")
+				// fmt.Println("Write2File")
 			}
 		}(storage, sleep)
 	}
