@@ -9,6 +9,7 @@ import (
 
 	"github.com/JohnRobertFord/go-plant/internal/config"
 	"github.com/JohnRobertFord/go-plant/internal/server"
+	"github.com/JohnRobertFord/go-plant/internal/storage/metrics/cache"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -34,8 +35,11 @@ func TestMetricRouter(t *testing.T) {
 		log.Fatalf("cant start server: %e", err)
 	}
 
-	m := server.NewMemStorage(cfg)
-	ts := httptest.NewServer(MetricRouter(m))
+	storage := cache.NewMemStorage(cfg)
+
+	metricServer := server.NewMetricServer(cfg, storage)
+
+	ts := httptest.NewServer(metricServer.Server.Handler)
 	defer ts.Close()
 
 	var tests = []struct {
