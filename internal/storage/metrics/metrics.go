@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"context"
 	"strconv"
 
 	"github.com/JohnRobertFord/go-plant/internal/config"
@@ -14,10 +15,10 @@ type Element struct {
 }
 
 type Storage interface {
-	Insert(Element) Element
-	Select(Element) (Element, error)
-	SelectAll() []Element
-	GetConfig() config.Config
+	Insert(context.Context, Element) (Element, error)
+	Select(context.Context, Element) (Element, error)
+	SelectAll(context.Context) ([]Element, error)
+	GetConfig() *config.Config
 }
 
 func IsCounter(input string) bool {

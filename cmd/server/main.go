@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"os/signal"
@@ -21,18 +22,24 @@ func main() {
 	if err != nil {
 		log.Fatalf("can't init config: %e", err)
 	}
-	log.Print(cfg)
 
 	var storage metrics.Storage
+	ctx := context.Background()
 
 	if cfg.DatabaseDsn != "" {
-		storage = postgres.NewPostgresStorage(cfg)
+		storage, err = postgres.NewPostgresStorage(cfg)
+		if err != nil {
+			log.Fatal(err)
+		}
 	} else {
 		storage = cache.NewMemStorage(cfg)
 	}
 
 	if cfg.Restore {
-		diskfile.Read4File(storage)
+		err := diskfile.Read4File(ctx, storage)
+		if err != nil {
+			log.Printf("[ERR][FILE] cant restore from file: %s", err)
+		}
 	}
 
 	if cfg.StoreInterval > 0 && cfg.DatabaseDsn == "" {
@@ -40,8 +47,10 @@ func main() {
 		go func(ms metrics.Storage, t time.Duration) {
 			for {
 				<-time.After(t)
-				diskfile.Write2File(ms)
-				// fmt.Println("Write2File")
+				err := diskfile.Write2File(ctx, ms)
+				if err != nil {
+					log.Printf("[ERR][FILE] cant write to file: %e", err)
+				}
 			}
 		}(storage, sleep)
 	}
@@ -57,5 +66,8 @@ func main() {
 		syscall.SIGQUIT,
 	)
 	<-sigChan
-	diskfile.Write2File(storage)
+	err = diskfile.Write2File(ctx, storage)
+	if err != nil {
+		log.Printf("[ERR][FILE] cant write to file: %e", err)
+	}
 }

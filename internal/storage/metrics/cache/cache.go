@@ -1,10 +1,9 @@
 package cache
 
 import (
+	"context"
 	"fmt"
 	"log"
-	"net/http"
-	"strings"
 	"sync"
 
 	"github.com/JohnRobertFord/go-plant/internal/config"
@@ -29,7 +28,11 @@ func NewMemStorage(c *config.Config) *MemStorage {
 	}
 }
 
-func (m *MemStorage) Insert(el metrics.Element) metrics.Element {
+func (m *MemStorage) GetConfig() *config.Config {
+	return m.cfg
+}
+
+func (m *MemStorage) Insert(ctx context.Context, el metrics.Element) (metrics.Element, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -50,11 +53,13 @@ func (m *MemStorage) Insert(el metrics.Element) metrics.Element {
 			m.mapa[el.ID] = *el.Delta
 			out.Delta = el.Delta
 		}
+	default:
+		return metrics.Element{}, fmt.Errorf("[ERR][INSERT] cant insert metric %v", el)
 	}
-	return out
+	return out, nil
 }
 
-func (m *MemStorage) Select(el metrics.Element) (metrics.Element, error) {
+func (m *MemStorage) Select(ctx context.Context, el metrics.Element) (metrics.Element, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -80,11 +85,12 @@ func (m *MemStorage) Select(el metrics.Element) (metrics.Element, error) {
 	return out, nil
 }
 
-func (m *MemStorage) SelectAll() []metrics.Element {
+func (m *MemStorage) SelectAll(ctx context.Context) ([]metrics.Element, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	var list []metrics.Element
+	var err error
 
 	for k, v := range m.mapa {
 		temp := metrics.Element{
@@ -96,65 +102,21 @@ func (m *MemStorage) SelectAll() []metrics.Element {
 				temp.MType = "counter"
 				temp.Delta = &c
 			} else {
-				log.Println("error counter delta")
-				// return metrics.Element{}, fmt.Errorf("metric not found")
+				log.Println("error getting counter")
+				err = fmt.Errorf("error getting metrics")
 			}
 		case float64:
 			if f, ok := v.(float64); ok {
 				temp.MType = "gauge"
 				temp.Value = &f
 			} else {
-				log.Println("error gauge value")
-				// return metrics.Element{}, fmt.Errorf("metric not found")
+				log.Println("error getting gauge")
+				err = fmt.Errorf("error getting metrics")
 			}
 		default:
-			fmt.Printf("unknown type: %v", vt)
+			log.Printf("unknown type: %v", vt)
 		}
 		list = append(list, temp)
 	}
-	return list
-}
-
-func (m *MemStorage) GetConfig() config.Config {
-	return *m.cfg
-}
-
-func Middleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-
-		path := strings.Split(req.URL.Path, "/")
-		if req.Method == http.MethodPost && strings.Contains(path[1], "update") && len(path) == 3 {
-			// check valid REQUEST
-		} else if req.Method == http.MethodPost && path[1] == "value" && len(path) == 3 {
-			// check valid REQUEST
-		} else if req.Method == http.MethodPost {
-			req.Header.Set("Accept", "*/*")
-			if len(path) != 5 {
-				http.Error(w, "Not Found", http.StatusNotFound)
-				return
-			}
-
-			val := path[4]
-			if (strings.Compare(path[2], "counter") != 0 || !metrics.IsCounter(val)) &&
-				(strings.Compare(path[2], "gauge") != 0 || !metrics.IsGauge(val)) {
-				http.Error(w, "Bad Request!", http.StatusBadRequest)
-				return
-			}
-		} else if req.Method == http.MethodGet {
-			if len(path) != 4 && len(path) != 2 {
-				http.Error(w, "Not Found", http.StatusNotFound)
-				return
-			}
-			if (len(path) > 2) &&
-				(strings.Compare(path[2], "counter") != 0) &&
-				(strings.Compare(path[2], "gauge") != 0) {
-				http.Error(w, "Bad Request!", http.StatusBadRequest)
-				return
-			}
-		} else {
-			http.Error(w, "Only POST or GET requests are allowed!", http.StatusMethodNotAllowed)
-			return
-		}
-		next.ServeHTTP(w, req)
-	})
+	return list, err
 }

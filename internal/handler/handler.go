@@ -14,14 +14,20 @@ import (
 
 	"github.com/JohnRobertFord/go-plant/internal/storage/metrics"
 	"github.com/JohnRobertFord/go-plant/internal/storage/metrics/diskfile"
+	"github.com/go-chi/chi"
 	"github.com/jackc/pgx/v5"
 )
 
 func GetAll(ms metrics.Storage) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		// fmt.Println("GetAll")
 
-		list := ms.SelectAll()
+		ctx := req.Context()
+		list, err := ms.SelectAll(ctx)
+		if err != nil {
+			log.Println("[ERR][SELECTALL] failed to get all metrics")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 		var out []string
 		for _, el := range list {
 			out = append(out, el.ID)
@@ -35,11 +41,10 @@ func GetAll(ms metrics.Storage) http.HandlerFunc {
 func Ping(ms metrics.Storage) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 
-		// fmt.Println("Ping")
-		ctx := context.Background()
+		ctx := req.Context()
 		cfg := ms.GetConfig()
 
-		for i := 0; i < 3; i++ {
+		for _, i := range [3]int{1, 3, 5} {
 			conn, err := pgx.Connect(ctx, cfg.DatabaseDsn)
 			if err == nil {
 				w.WriteHeader(http.StatusOK)
@@ -52,21 +57,20 @@ func Ping(ms metrics.Storage) http.HandlerFunc {
 				return
 			}
 
-			time.Sleep(time.Duration(i+1) * time.Second)
-			fmt.Printf("Connect to DB. Retry: %d\n", i+1)
+			time.Sleep(time.Duration(i) * time.Second)
+			log.Printf("Connect to DB. Retry: %d\n", i)
 		}
-		log.Printf("[ERR][DB] failed to connect to %s\n", cfg.DatabaseDsn)
+		log.Printf("[ERR][DB] failed to connect to %s", cfg.DatabaseDsn)
 		w.WriteHeader(http.StatusInternalServerError)
 	})
 }
 func WriteMetric(ms metrics.Storage) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 
-		// fmt.Println("WriteMetric")
-
-		metrictype := strings.Split(req.URL.Path, "/")[2]
-		metric := strings.Split(req.URL.Path, "/")[3]
-		input := strings.Split(req.URL.Path, "/")[4]
+		ctx := req.Context()
+		metrictype := chi.URLParam(req, "MetricType")
+		metric := chi.URLParam(req, "MetricID")
+		input := chi.URLParam(req, "MetricValue")
 
 		el := metrics.Element{
 			ID:    metric,
@@ -83,16 +87,18 @@ func WriteMetric(ms metrics.Storage) http.HandlerFunc {
 				el.Delta = &i
 			}
 		}
-		ms.Insert(el)
-
+		_, err := ms.Insert(ctx, el)
+		if err != nil {
+			log.Println(err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 	})
 }
 func WriteJSONMetric(ms metrics.Storage) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-
-		// fmt.Println("WriteJSONMetric")
-
+		ctx := req.Context()
 		data, err := io.ReadAll(req.Body)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
@@ -108,19 +114,26 @@ func WriteJSONMetric(ms metrics.Storage) http.HandlerFunc {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
-
-			o, _ := json.Marshal(ms.Insert(in))
+			insrt, err := ms.Insert(ctx, in)
+			if err != nil {
+				log.Println(err)
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			o, _ := json.Marshal(insrt)
 			if cfg.StoreInterval == 0 {
-				err = diskfile.Write2File(ms)
+				err = diskfile.Write2File(ctx, ms)
 				if err != nil {
 					log.Printf("[ERR][FILE] %s", err)
+					w.WriteHeader(http.StatusInternalServerError)
+					return
 				}
 			}
 
 			w.WriteHeader(http.StatusOK)
 			w.Header().Set("Content-Type", "application/json")
 			io.WriteString(w, fmt.Sprintf("%s\n", o))
-		} else if data[0] == '[' {
+		} else {
 			var in []metrics.Element
 			err = json.Unmarshal(data, &in)
 			if err != nil {
@@ -129,15 +142,22 @@ func WriteJSONMetric(ms metrics.Storage) http.HandlerFunc {
 			}
 			var out []metrics.Element
 			for _, el := range in {
-				out = append(out, ms.Insert(el))
+				insrt, err := ms.Insert(ctx, el)
+				if err != nil {
+					log.Println(err)
+					continue
+				}
+				out = append(out, insrt)
 			}
 
 			o, _ := json.Marshal(out)
 
 			if cfg.StoreInterval == 0 {
-				err = diskfile.Write2File(ms)
+				err = diskfile.Write2File(ctx, ms)
 				if err != nil {
 					log.Printf("[ERR][FILE] %s", err)
+					w.WriteHeader(http.StatusInternalServerError)
+					return
 				}
 			}
 
@@ -150,8 +170,7 @@ func WriteJSONMetric(ms metrics.Storage) http.HandlerFunc {
 func GetJSONMetric(ms metrics.Storage) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 
-		// fmt.Println("GetJSONMetric")
-
+		ctx := req.Context()
 		decoder := json.NewDecoder(req.Body)
 		var in metrics.Element
 		err := decoder.Decode(&in)
@@ -166,9 +185,10 @@ func GetJSONMetric(ms metrics.Storage) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 
-		res, err := ms.Select(in)
+		res, err := ms.Select(ctx, in)
 		if err != nil {
-			http.Error(w, "Metric Not Found", http.StatusNotFound)
+			log.Println(err)
+			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 
@@ -180,15 +200,15 @@ func GetJSONMetric(ms metrics.Storage) http.HandlerFunc {
 func GetMetric(ms metrics.Storage) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 
-		// fmt.Println("GetMetric")
-
+		ctx := req.Context()
 		w.Header().Set("Content-Type", "text/plain")
-		metrictype := strings.Split(req.URL.Path, "/")[2]
-		ID := strings.Split(req.URL.Path, "/")[3]
+		metrictype := chi.URLParam(req, "MetricType")
+		ID := chi.URLParam(req, "MetricID")
 
-		res, err := ms.Select(metrics.Element{ID: ID, MType: metrictype})
+		res, err := ms.Select(ctx, metrics.Element{ID: ID, MType: metrictype})
 		if err != nil {
-			http.Error(w, "Metric Not Found", http.StatusNotFound)
+			log.Println(err)
+			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 		var out any

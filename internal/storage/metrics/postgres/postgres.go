@@ -39,51 +39,48 @@ func (p *postgres) Close() {
 	p.db.Close()
 }
 
-func NewPostgresStorage(c *config.Config) *postgres {
+func NewPostgresStorage(c *config.Config) (*postgres, error) {
 	ctx := context.Background()
 	pgOnce.Do(func() {
 		dbPool, err := pgxpool.New(ctx, c.DatabaseDsn)
 		if err != nil {
-			log.Printf("unable to create connection pool: %v", err)
+			log.Printf("unable to create connection pool: %s", err)
 			return
 		}
 		pgInstance = &postgres{dbPool, c}
 	})
-	pgInstance.db.Exec(ctx, createTableQuery)
-
-	return pgInstance
+	_, err := pgInstance.db.Exec(ctx, createTableQuery)
+	return pgInstance, err
 }
 
-func (p *postgres) SelectAll() []metrics.Element {
+func (p *postgres) SelectAll(ctx context.Context) ([]metrics.Element, error) {
 
-	rows, err := p.db.Query(context.Background(), getAllMetricsQuery)
+	rows, err := p.db.Query(ctx, getAllMetricsQuery)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	defer rows.Close()
 
 	elements, err := pgx.CollectRows(rows, pgx.RowToStructByName[metrics.Element])
 	if err != nil {
-		log.Printf("CollectRows error: %v\n", err)
-		return nil
+		log.Printf("CollectRows error: %v", err)
+		return nil, err
 	}
 
-	return elements
+	return elements, nil
 }
-func (p *postgres) Insert(el metrics.Element) metrics.Element {
-	ctx := context.Background()
+func (p *postgres) Insert(ctx context.Context, el metrics.Element) (metrics.Element, error) {
 	switch el.MType {
 	case "gauge":
 		_, err := p.db.Exec(ctx, insertWithConflictQuery, el.ID, el.MType, el.Value, el.Delta, el.Value, el.Delta)
 		if err != nil {
-			log.Println(err)
-			return metrics.Element{}
+			return metrics.Element{}, err
 		}
-		return el
+		return el, nil
 	case "counter":
 		rows, err := p.db.Query(ctx, getOneMetricQuery, el.ID, el.MType)
 		if err != nil {
-			return metrics.Element{}
+			return metrics.Element{}, err
 		}
 
 		var outDelta int64
@@ -91,7 +88,7 @@ func (p *postgres) Insert(el metrics.Element) metrics.Element {
 		if err != nil {
 			if !errors.Is(err, pgx.ErrNoRows) {
 				log.Printf("CollectRows error: %v, metric: %v", err, el.ID)
-				return metrics.Element{}
+				return metrics.Element{}, err
 			}
 			outDelta = *el.Delta
 		} else {
@@ -107,21 +104,20 @@ func (p *postgres) Insert(el metrics.Element) metrics.Element {
 		_, err = p.db.Exec(ctx, insertWithConflictQuery, out.ID, out.MType, out.Value, out.Delta, out.Value, out.Delta)
 		if err != nil {
 			log.Println(err)
-			return metrics.Element{}
+			return metrics.Element{}, err
 		}
-		return out
+		return out, nil
 	default:
-		return metrics.Element{}
+		return metrics.Element{}, nil
 	}
 }
 
-func (p *postgres) Select(el metrics.Element) (metrics.Element, error) {
-	ctx := context.Background()
+func (p *postgres) Select(ctx context.Context, el metrics.Element) (metrics.Element, error) {
+
 	row, err := p.db.Query(ctx, getOneMetricQuery, el.ID, el.MType)
 	if err != nil {
 		return metrics.Element{}, err
 	}
-
 	out, err := pgx.CollectOneRow(row, pgx.RowToStructByName[metrics.Element])
 	if err != nil {
 		return metrics.Element{}, err
@@ -130,6 +126,6 @@ func (p *postgres) Select(el metrics.Element) (metrics.Element, error) {
 	return out, nil
 }
 
-func (p *postgres) GetConfig() config.Config {
-	return *p.cfg
+func (p *postgres) GetConfig() *config.Config {
+	return p.cfg
 }
