@@ -3,8 +3,10 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/JohnRobertFord/go-plant/internal/config"
 	"github.com/JohnRobertFord/go-plant/internal/storage/metrics"
@@ -51,6 +53,27 @@ func NewPostgresStorage(c *config.Config) (*postgres, error) {
 	})
 	_, err := pgInstance.db.Exec(ctx, createTableQuery)
 	return pgInstance, err
+}
+
+func (p *postgres) Ping(ctx context.Context) error {
+
+	for _, i := range [3]int{1, 3, 5} {
+		conn, err := pgx.Connect(ctx, p.cfg.DatabaseDsn)
+		if err == nil {
+			defer func() {
+				err := conn.Close(ctx)
+				if err != nil {
+					log.Printf("[ERR][DB] error while closing conntection: %s\n", err)
+				}
+			}()
+			return nil
+		}
+
+		time.Sleep(time.Duration(i) * time.Second)
+		log.Printf("Connect to DB. Retry: %d\n", i)
+	}
+	log.Printf("[ERR][DB] failed to connect DB")
+	return fmt.Errorf("[ERR][DB] failed to connect DB")
 }
 
 func (p *postgres) SelectAll(ctx context.Context) ([]metrics.Element, error) {

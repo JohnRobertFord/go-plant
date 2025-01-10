@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,14 +9,22 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/JohnRobertFord/go-plant/internal/storage/metrics"
 	"github.com/JohnRobertFord/go-plant/internal/storage/metrics/diskfile"
 	"github.com/go-chi/chi"
-	"github.com/jackc/pgx/v5"
 )
 
+func Ping(ms metrics.Storage) http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		err := ms.Ping(req.Context())
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+}
 func GetAll(ms metrics.Storage) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 
@@ -36,32 +43,6 @@ func GetAll(ms metrics.Storage) http.HandlerFunc {
 		w.WriteHeader(http.StatusOK)
 		io.WriteString(w, strings.Join(out, ", "))
 
-	})
-}
-func Ping(ms metrics.Storage) http.HandlerFunc {
-	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-
-		ctx := req.Context()
-		cfg := ms.GetConfig()
-
-		for _, i := range [3]int{1, 3, 5} {
-			conn, err := pgx.Connect(ctx, cfg.DatabaseDsn)
-			if err == nil {
-				w.WriteHeader(http.StatusOK)
-				defer func(context context.Context) {
-					err := conn.Close(context)
-					if err != nil {
-						log.Printf("[ERR][DB] error while closing conntection: %s\n", err)
-					}
-				}(ctx)
-				return
-			}
-
-			time.Sleep(time.Duration(i) * time.Second)
-			log.Printf("Connect to DB. Retry: %d\n", i)
-		}
-		log.Printf("[ERR][DB] failed to connect to %s", cfg.DatabaseDsn)
-		w.WriteHeader(http.StatusInternalServerError)
 	})
 }
 func WriteMetric(ms metrics.Storage) http.HandlerFunc {
