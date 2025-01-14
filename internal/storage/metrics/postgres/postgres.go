@@ -10,6 +10,8 @@ import (
 
 	"github.com/JohnRobertFord/go-plant/internal/config"
 	"github.com/JohnRobertFord/go-plant/internal/storage/metrics"
+	"github.com/jackc/pgconn"
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -42,6 +44,7 @@ func (p *postgres) Close() {
 }
 
 func NewPostgresStorage(c *config.Config) (*postgres, error) {
+
 	ctx := context.Background()
 	pgOnce.Do(func() {
 		dbPool, err := pgxpool.New(ctx, c.DatabaseDsn)
@@ -78,6 +81,10 @@ func (p *postgres) Ping(ctx context.Context) error {
 
 func (p *postgres) SelectAll(ctx context.Context) ([]metrics.Element, error) {
 
+	err := p.check(ctx)
+	if err != nil {
+		return []metrics.Element{}, err
+	}
 	rows, err := p.db.Query(ctx, getAllMetricsQuery)
 	if err != nil {
 		return nil, err
@@ -93,6 +100,11 @@ func (p *postgres) SelectAll(ctx context.Context) ([]metrics.Element, error) {
 	return elements, nil
 }
 func (p *postgres) Insert(ctx context.Context, el metrics.Element) (metrics.Element, error) {
+
+	err := p.check(ctx)
+	if err != nil {
+		return metrics.Element{}, err
+	}
 	switch el.MType {
 	case "gauge":
 		_, err := p.db.Exec(ctx, insertWithConflictQuery, el.ID, el.MType, el.Value, el.Delta, el.Value, el.Delta)
@@ -137,6 +149,10 @@ func (p *postgres) Insert(ctx context.Context, el metrics.Element) (metrics.Elem
 
 func (p *postgres) Select(ctx context.Context, el metrics.Element) (metrics.Element, error) {
 
+	err := p.check(ctx)
+	if err != nil {
+		return metrics.Element{}, err
+	}
 	row, err := p.db.Query(ctx, getOneMetricQuery, el.ID, el.MType)
 	if err != nil {
 		return metrics.Element{}, err
@@ -151,4 +167,33 @@ func (p *postgres) Select(ctx context.Context, el metrics.Element) (metrics.Elem
 
 func (p *postgres) GetConfig() *config.Config {
 	return p.cfg
+}
+
+func retry(ctx context.Context, cfg *config.Config) (*pgxpool.Pool, error) {
+
+	var err error
+	for _, i := range [3]int{1, 3, 5} {
+		dbPool, err := pgxpool.New(ctx, cfg.DatabaseDsn)
+		if err == nil {
+			return dbPool, nil
+		}
+		time.Sleep(time.Duration(i) * time.Second)
+		log.Printf("Retry: %d\n", i)
+	}
+	log.Printf("[ERR][DB] failed to connect DB")
+	return nil, err
+}
+func (p *postgres) check(ctx context.Context) error {
+	err := p.db.Ping(ctx)
+	var pgErr *pgconn.PgError
+	if err != nil {
+		if errors.As(err, &pgErr) && pgerrcode.IsConnectionException(pgErr.Code) {
+			newConn, err := retry(ctx, p.cfg)
+			p.db = newConn
+			return err
+		} else {
+			return err
+		}
+	}
+	return nil
 }

@@ -32,7 +32,7 @@ func (m *MemStorage) GetConfig() *config.Config {
 	return m.cfg
 }
 func (m *MemStorage) Ping(context.Context) error {
-	return nil
+	return fmt.Errorf("no support storage")
 }
 func (m *MemStorage) Insert(ctx context.Context, el metrics.Element) (metrics.Element, error) {
 	m.mu.Lock()
