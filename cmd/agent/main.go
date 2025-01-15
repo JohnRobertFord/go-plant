@@ -93,12 +93,18 @@ func (m *Metrics) GetMetrics() []Element {
 }
 
 func SendMetric(val string) {
-	resp, err := http.Post(val, "text/plain", nil)
-	if err != nil {
-		fmt.Println(err)
-		return
+
+	var err error
+	for _, i := range [3]int{1, 3, 5} {
+		resp, err := http.Post(val, "text/plain", nil)
+		if err == nil {
+			defer resp.Body.Close()
+			return
+		}
+		time.Sleep(time.Duration(i) * time.Second)
+		fmt.Printf("Retry send metric: %d\n", i)
 	}
-	defer resp.Body.Close()
+	fmt.Println(err)
 }
 
 func PrepareData(els []Element) {
@@ -115,19 +121,24 @@ func PrepareData(els []Element) {
 
 func SendJSONData(els []Element) {
 
+	var err error
 	ret, err := json.Marshal(els)
-	if err != nil {
-		panic(err)
-	}
-
-	r := bytes.NewReader(ret)
-	resp, err := http.Post("http://"+*remote+"/update/", "application/json", r)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	defer resp.Body.Close()
 
+	r := bytes.NewReader(ret)
+	for _, i := range [3]int{1, 3, 5} {
+		resp, err := http.Post("http://"+*remote+"/update/", "application/json", r)
+		if err == nil {
+			defer resp.Body.Close()
+			return
+		}
+		time.Sleep(time.Duration(i) * time.Second)
+		fmt.Printf("Retry send json metric: %d\n", i)
+	}
+	fmt.Println(err)
 }
 
 func main() {
@@ -170,14 +181,6 @@ func main() {
 	myM := Metrics{
 		memstats: &runtime.MemStats{},
 	}
-
-	// pollTicker := time.NewTicker(time.Duration(pInt) * time.Second)
-	// reportTicker := time.NewTicker(time.Duration(rInt) * time.Second)
-
-	// var m sync.Mutex
-
-	// go UpdateMetrics(*myM.memstats, &m, pollTicker)
-	// go PrepareData(myM.GetMetrics(), &m, reportTicker)
 
 	runtime.ReadMemStats(myM.memstats)
 	PrepareData(myM.GetMetrics())
