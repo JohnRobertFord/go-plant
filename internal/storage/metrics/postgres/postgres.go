@@ -5,12 +5,10 @@ import (
 	"errors"
 	"log"
 	"sync"
-	"time"
 
 	"github.com/JohnRobertFord/go-plant/internal/config"
 	"github.com/JohnRobertFord/go-plant/internal/storage/metrics"
-	"github.com/jackc/pgconn"
-	"github.com/jackc/pgerrcode"
+	"github.com/JohnRobertFord/go-plant/internal/utils"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -59,128 +57,103 @@ func NewPostgresStorage(c *config.Config) (*postgres, error) {
 
 func (p *postgres) Ping(ctx context.Context) error {
 
-	err := p.check(ctx)
+	err := p.db.Ping(ctx)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (p *postgres) SelectAll(ctx context.Context) ([]metrics.Element, error) {
+func (p *postgres) SelectAll(ctx context.Context) (*[]metrics.Element, error) {
 
-	err := p.check(ctx)
-	if err != nil {
-		return []metrics.Element{}, err
-	}
-	rows, err := p.db.Query(ctx, getAllMetricsQuery)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+	var out []metrics.Element
+	var err error
+	utils.Retry(ctx, func() error {
+		rows, err := p.db.Query(ctx, getAllMetricsQuery)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		out, err = pgx.CollectRows(rows, pgx.RowToStructByName[metrics.Element])
+		if err != nil {
+			log.Printf("CollectRows error: %v", err)
+			return err
+		}
+		return nil
+	})
 
-	elements, err := pgx.CollectRows(rows, pgx.RowToStructByName[metrics.Element])
-	if err != nil {
-		log.Printf("CollectRows error: %v", err)
-		return nil, err
-	}
-
-	return elements, nil
+	return &out, err
 }
-func (p *postgres) Insert(ctx context.Context, el metrics.Element) (metrics.Element, error) {
+func (p *postgres) Insert(ctx context.Context, el metrics.Element) (*metrics.Element, error) {
 
-	err := p.check(ctx)
-	if err != nil {
-		return metrics.Element{}, err
-	}
-	switch el.MType {
-	case "gauge":
-		_, err := p.db.Exec(ctx, insertWithConflictQuery, el.ID, el.MType, el.Value, el.Delta, el.Value, el.Delta)
-		if err != nil {
-			return metrics.Element{}, err
-		}
-		return el, nil
-	case "counter":
-		rows, err := p.db.Query(ctx, getOneMetricQuery, el.ID, el.MType)
-		if err != nil {
-			return metrics.Element{}, err
-		}
-
-		var outDelta int64
-		ex, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[metrics.Element])
-		if err != nil {
-			if !errors.Is(err, pgx.ErrNoRows) {
-				log.Printf("CollectRows error: %v, metric: %v", err, el.ID)
-				return metrics.Element{}, err
+	var out metrics.Element
+	utils.Retry(ctx, func() error {
+		switch el.MType {
+		case "gauge":
+			_, err := p.db.Exec(ctx, insertWithConflictQuery, el.ID, el.MType, el.Value, el.Delta, el.Value, el.Delta)
+			if err != nil {
+				return err
 			}
-			outDelta = *el.Delta
-		} else {
-			outDelta = *ex.Delta + *el.Delta
-		}
+			return nil
+		case "counter":
+			rows, err := p.db.Query(ctx, getOneMetricQuery, el.ID, el.MType)
+			if err != nil {
+				return err
+			}
 
-		out := metrics.Element{
-			ID:    el.ID,
-			MType: el.MType,
-			Delta: &outDelta,
-		}
+			var outDelta int64
+			ex, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[metrics.Element])
+			if err != nil {
+				if !errors.Is(err, pgx.ErrNoRows) {
+					log.Printf("CollectRows error: %v, metric: %v", err, el.ID)
+					return err
+				}
+				outDelta = *el.Delta
+			} else {
+				outDelta = *ex.Delta + *el.Delta
+			}
 
-		_, err = p.db.Exec(ctx, insertWithConflictQuery, out.ID, out.MType, out.Value, out.Delta, out.Value, out.Delta)
-		if err != nil {
-			log.Println(err)
-			return metrics.Element{}, err
+			out := metrics.Element{
+				ID:    el.ID,
+				MType: el.MType,
+				Delta: &outDelta,
+			}
+
+			_, err = p.db.Exec(ctx, insertWithConflictQuery, out.ID, out.MType, out.Value, out.Delta, out.Value, out.Delta)
+			if err != nil {
+				log.Println(err)
+				return err
+			}
+			return nil
 		}
-		return out, nil
-	default:
-		return metrics.Element{}, nil
-	}
+		return nil
+	})
+	return &out, nil
 }
 
-func (p *postgres) Select(ctx context.Context, el metrics.Element) (metrics.Element, error) {
+func (p *postgres) Select(ctx context.Context, el metrics.Element) (*metrics.Element, error) {
 
-	err := p.check(ctx)
-	if err != nil {
-		return metrics.Element{}, err
-	}
-	row, err := p.db.Query(ctx, getOneMetricQuery, el.ID, el.MType)
-	if err != nil {
-		return metrics.Element{}, err
-	}
-	out, err := pgx.CollectOneRow(row, pgx.RowToStructByName[metrics.Element])
-	if err != nil {
-		return metrics.Element{}, err
+	var out metrics.Element
+
+	e := utils.Retry(ctx, func() error {
+		row, err := p.db.Query(ctx, getOneMetricQuery, el.ID, el.MType)
+		if err != nil {
+			return err
+		}
+		out, err = pgx.CollectOneRow(row, pgx.RowToStructByName[metrics.Element])
+		if err != nil {
+			return err
+		}
+		return err
+	})
+
+	if e != nil {
+		return nil, e
 	}
 
-	return out, nil
+	return &out, nil
 }
 
 func (p *postgres) GetConfig() *config.Config {
 	return p.cfg
-}
-
-func retry(ctx context.Context, cfg *config.Config) (*pgxpool.Pool, error) {
-
-	var err error
-	for _, i := range [3]int{1, 3, 5} {
-		dbPool, err := pgxpool.New(ctx, cfg.DatabaseDsn)
-		if err == nil {
-			return dbPool, nil
-		}
-		time.Sleep(time.Duration(i) * time.Second)
-		log.Printf("Retry: %d\n", i)
-	}
-	log.Printf("[ERR][DB] failed to connect DB")
-	return nil, err
-}
-func (p *postgres) check(ctx context.Context) error {
-	err := p.db.Ping(ctx)
-	var pgErr *pgconn.PgError
-	if err != nil {
-		if errors.As(err, &pgErr) && pgerrcode.IsConnectionException(pgErr.Code) {
-			newConn, err := retry(ctx, p.cfg)
-			p.db = newConn
-			return err
-		} else {
-			return err
-		}
-	}
-	return nil
 }

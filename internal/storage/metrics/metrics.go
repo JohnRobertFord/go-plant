@@ -15,9 +15,9 @@ type Element struct {
 }
 
 type Storage interface {
-	Insert(context.Context, Element) (Element, error)
-	Select(context.Context, Element) (Element, error)
-	SelectAll(context.Context) ([]Element, error)
+	Insert(context.Context, Element) (*Element, error)
+	Select(context.Context, Element) (*Element, error)
+	SelectAll(context.Context) (*[]Element, error)
 	Ping(context.Context) error
 	GetConfig() *config.Config
 }

@@ -34,7 +34,7 @@ func (m *MemStorage) GetConfig() *config.Config {
 func (m *MemStorage) Ping(context.Context) error {
 	return fmt.Errorf("no support storage")
 }
-func (m *MemStorage) Insert(ctx context.Context, el metrics.Element) (metrics.Element, error) {
+func (m *MemStorage) Insert(ctx context.Context, el metrics.Element) (*metrics.Element, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -56,12 +56,12 @@ func (m *MemStorage) Insert(ctx context.Context, el metrics.Element) (metrics.El
 			out.Delta = el.Delta
 		}
 	default:
-		return metrics.Element{}, fmt.Errorf("[ERR][INSERT] cant insert metric %v", el)
+		return nil, fmt.Errorf("[ERR][INSERT] cant insert metric %v", el)
 	}
-	return out, nil
+	return &out, nil
 }
 
-func (m *MemStorage) Select(ctx context.Context, el metrics.Element) (metrics.Element, error) {
+func (m *MemStorage) Select(ctx context.Context, el metrics.Element) (*metrics.Element, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -74,20 +74,20 @@ func (m *MemStorage) Select(ctx context.Context, el metrics.Element) (metrics.El
 		if f, ok := m.mapa[el.ID].(float64); ok {
 			out.Value = &f
 		} else {
-			return metrics.Element{}, fmt.Errorf("metric not found")
+			return nil, fmt.Errorf("metric not found")
 		}
 	} else if el.MType == "counter" {
 		if c, ok := m.mapa[el.ID].(int64); ok {
 			out.Delta = &c
 		} else {
-			return metrics.Element{}, fmt.Errorf("metric not found")
+			return nil, fmt.Errorf("metric not found")
 		}
 	}
 
-	return out, nil
+	return &out, nil
 }
 
-func (m *MemStorage) SelectAll(ctx context.Context) ([]metrics.Element, error) {
+func (m *MemStorage) SelectAll(ctx context.Context) (*[]metrics.Element, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -120,5 +120,5 @@ func (m *MemStorage) SelectAll(ctx context.Context) ([]metrics.Element, error) {
 		}
 		list = append(list, temp)
 	}
-	return list, err
+	return &list, err
 }

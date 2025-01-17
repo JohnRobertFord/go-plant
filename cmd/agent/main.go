@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -11,6 +12,8 @@ import (
 	"runtime"
 	"strconv"
 	"time"
+
+	"github.com/JohnRobertFord/go-plant/internal/utils"
 )
 
 var pollInterval = 2
@@ -95,16 +98,18 @@ func (m *Metrics) GetMetrics() []Element {
 func SendMetric(val string) {
 
 	var err error
-	for _, i := range [3]int{1, 3, 5} {
+	ctx := context.Context(context.Background())
+	err = utils.Retry(ctx, func() error {
 		resp, err := http.Post(val, "text/plain", nil)
-		if err == nil {
-			defer resp.Body.Close()
-			return
+		if err != nil {
+			return err
 		}
-		time.Sleep(time.Duration(i) * time.Second)
-		fmt.Printf("Retry send metric: %d\n", i)
+		defer resp.Body.Close()
+		return nil
+	})
+	if err != nil {
+		fmt.Println(err)
 	}
-	fmt.Println(err)
 }
 
 func PrepareData(els []Element) {
@@ -127,18 +132,19 @@ func SendJSONData(els []Element) {
 		fmt.Println(err)
 		return
 	}
-
 	r := bytes.NewReader(ret)
-	for _, i := range [3]int{1, 3, 5} {
+	ctx := context.Context(context.Background())
+	err = utils.Retry(ctx, func() error {
 		resp, err := http.Post("http://"+*remote+"/update/", "application/json", r)
-		if err == nil {
-			defer resp.Body.Close()
-			return
+		if err != nil {
+			return err
 		}
-		time.Sleep(time.Duration(i) * time.Second)
-		fmt.Printf("Retry send json metric: %d\n", i)
+		defer resp.Body.Close()
+		return err
+	})
+	if err != nil {
+		fmt.Println(err)
 	}
-	fmt.Println(err)
 }
 
 func main() {

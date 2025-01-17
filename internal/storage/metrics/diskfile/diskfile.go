@@ -48,7 +48,7 @@ func Write2File(ctx context.Context, ms metrics.Storage) error {
 	if err != nil {
 		log.Println(err)
 	}
-	for _, el := range list {
+	for _, el := range *list {
 		switch el.MType {
 		case "counter":
 			// check to prevent 'panic: runtime error: invalid memory address or nil pointer dereference'
