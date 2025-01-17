@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/JohnRobertFord/go-plant/internal/sign"
 	"github.com/JohnRobertFord/go-plant/internal/storage/metrics"
 	"github.com/JohnRobertFord/go-plant/internal/storage/metrics/diskfile"
 	"github.com/go-chi/chi"
@@ -79,6 +80,7 @@ func WriteMetric(ms metrics.Storage) http.HandlerFunc {
 }
 func WriteJSONMetric(ms metrics.Storage) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+
 		ctx := req.Context()
 		data, err := io.ReadAll(req.Body)
 		if err != nil {
@@ -88,6 +90,15 @@ func WriteJSONMetric(ms metrics.Storage) http.HandlerFunc {
 		defer req.Body.Close()
 
 		cfg := ms.GetConfig()
+		hash := req.Header.Get("Hash")
+		if hash != "none" && hash != "" {
+			if !sign.IsValid(string(data), hash, cfg.Key) {
+				log.Printf("[ERR][Sign] Validation error")
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+		}
+
 		if data[0] != '[' {
 			var in metrics.Element
 			err = json.Unmarshal(data, &in)

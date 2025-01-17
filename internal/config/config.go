@@ -14,15 +14,17 @@ type Config struct {
 	FilePath      string `json:"filePath" env:"FILE_STORAGE_PATH"`
 	Restore       bool   `json:"isRestored" env:"RESTORE"`
 	DatabaseDsn   string `json:"databaseDsn" env:"DATABASE_DSN"`
+	Key           string `json:"key" env:"KEY"`
 }
 
 func (c *Config) String() string {
-	return fmt.Sprintf("[Config] Host:%s, StoreInterval:%v, FilePath:%s, Restore:%t, DatabaseDsn:%s",
+	return fmt.Sprintf("[Config] Host:%s, StoreInterval:%v, FilePath:%s, Restore:%t, DatabaseDsn:%s, Key:%s",
 		c.Bind,
 		c.StoreInterval,
 		c.FilePath,
 		c.Restore,
-		c.DatabaseDsn)
+		c.DatabaseDsn,
+		c.Key)
 }
 
 func InitConfig() (*Config, error) {
@@ -30,10 +32,11 @@ func InitConfig() (*Config, error) {
 	var envCfg Config
 
 	flag.StringVar(&cfg.Bind, "a", ":8080", "adderss and port to run server, or use env ADDRESS")
-	flag.IntVar(&cfg.StoreInterval, "i", 300, "интервал времени в секундах, по истечении которого текущие показания сервера сохраняются на диск (по умолчанию 300 секунд, значение 0 делает запись синхронной)")
+	flag.IntVar(&cfg.StoreInterval, "i", 10, "интервал времени в секундах, по истечении которого текущие показания сервера сохраняются на диск (по умолчанию 300 секунд, значение 0 делает запись синхронной)")
 	flag.StringVar(&cfg.FilePath, "f", "metrics.log", "путь до файла, куда сохраняются текущие значения")
 	flag.BoolVar(&cfg.Restore, "r", true, "булево значение (true/false), определяющее, загружать или нет ранее сохранённые значения из указанного файла при старте сервера")
 	flag.StringVar(&cfg.DatabaseDsn, "d", "", "адрес подключения к БД (env DATABASE_DSN) example: host=localhost user=postgres_user password=postgres_password dbname=postgres_db sslmode=disable")
+	flag.StringVar(&cfg.Key, "k", "", "ключ для создания подписи заголовков")
 
 	flag.Parse()
 
@@ -55,6 +58,9 @@ func InitConfig() (*Config, error) {
 	}
 	if os.Getenv("DATABASE_DSN") != "" {
 		cfg.DatabaseDsn = envCfg.DatabaseDsn
+	}
+	if os.Getenv("KEY") != "" {
+		cfg.Key = envCfg.Key
 	}
 
 	return &cfg, nil

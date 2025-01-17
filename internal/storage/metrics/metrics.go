@@ -35,3 +35,27 @@ func IsGauge(input string) bool {
 	}
 	return false
 }
+func FormatMetric(t string, name string, value uint64) Element {
+	val := float64(value)
+	return Element{
+		ID:    name,
+		MType: t,
+		Value: &val,
+	}
+}
+
+func FormatFloatMetric(t string, name string, value float64) Element {
+	return Element{
+		ID:    name,
+		MType: t,
+		Value: &value,
+	}
+}
+
+func FormatCounter(t string, name string, value int64) Element {
+	return Element{
+		ID:    name,
+		MType: t,
+		Delta: &value,
+	}
+}

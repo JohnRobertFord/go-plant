@@ -6,93 +6,78 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
 	"math/rand"
 	"net/http"
 	"os"
 	"runtime"
-	"strconv"
 	"time"
 
+	"github.com/JohnRobertFord/go-plant/internal/storage/metrics"
 	"github.com/JohnRobertFord/go-plant/internal/utils"
+	"github.com/caarlos0/env/v11"
 )
 
-var pollInterval = 2
-var reportInterval = 10
-var pollInt *int
-var repInt *int
-var remote *string
+var (
+	pollInterval   = 2
+	reportInterval = 10
+)
 
-type Element struct {
-	ID    string   `json:"id"`
-	MType string   `json:"type"`
-	Delta *int64   `json:"delta,omitempty"`
-	Value *float64 `json:"value,omitempty"`
-}
-
-type Metrics struct {
-	memstats    *runtime.MemStats
-	PollCount   int64
-	RandomValue uint64
-}
-
-func FormatMetric(t string, name string, value uint64) Element {
-	val := float64(value)
-	return Element{
-		ID:    name,
-		MType: t,
-		Value: &val,
+type (
+	Metrics struct {
+		memstats    *runtime.MemStats
+		PollCount   int64
+		RandomValue uint64
 	}
-}
-
-func FormatFloatMetric(t string, name string, value float64) Element {
-	return Element{
-		ID:    name,
-		MType: t,
-		Value: &value,
+	Config struct {
+		URL            string `env:"ADDRESS"`
+		ReportInterval int    `env:"REPORT_INTERVAL"`
+		PollInterval   int    `env:"POLL_INTERVAL"`
+		Key            string `env:"KEY"`
 	}
+)
+
+func (c *Config) String() string {
+	return fmt.Sprintf("[Config] URL:%s, ReportInterval:%d, PollInterval:%d, Key:%s",
+		c.URL,
+		c.ReportInterval,
+		c.PollInterval,
+		c.Key)
 }
 
-func FormatCounter(t string, name string, value int64) Element {
-	return Element{
-		ID:    name,
-		MType: t,
-		Delta: &value,
-	}
-}
+func (m *Metrics) GetMetrics() []metrics.Element {
+	mtrs := make([]metrics.Element, 29)
+	mtrs[0] = metrics.FormatMetric("gauge", "Alloc", m.memstats.Alloc)
+	mtrs[1] = metrics.FormatMetric("gauge", "BuckHashSys", m.memstats.BuckHashSys)
+	mtrs[2] = metrics.FormatMetric("gauge", "Frees", m.memstats.Frees)
+	mtrs[3] = metrics.FormatMetric("gauge", "GCSys", m.memstats.GCSys)
+	mtrs[4] = metrics.FormatMetric("gauge", "HeapAlloc", m.memstats.HeapAlloc)
+	mtrs[5] = metrics.FormatMetric("gauge", "HeapIdle", m.memstats.HeapIdle)
+	mtrs[6] = metrics.FormatMetric("gauge", "HeapInuse", m.memstats.HeapInuse)
+	mtrs[7] = metrics.FormatMetric("gauge", "HeapObjects", m.memstats.HeapObjects)
+	mtrs[8] = metrics.FormatMetric("gauge", "HeapReleased", m.memstats.HeapReleased)
+	mtrs[9] = metrics.FormatMetric("gauge", "HeapSys", m.memstats.HeapSys)
+	mtrs[10] = metrics.FormatMetric("gauge", "LastGC", m.memstats.LastGC)
+	mtrs[11] = metrics.FormatMetric("gauge", "Lookups", m.memstats.Lookups)
+	mtrs[12] = metrics.FormatMetric("gauge", "MCacheInuse", m.memstats.MCacheInuse)
+	mtrs[13] = metrics.FormatMetric("gauge", "MCacheSys", m.memstats.MCacheSys)
+	mtrs[14] = metrics.FormatMetric("gauge", "MSpanInuse", m.memstats.MSpanInuse)
+	mtrs[15] = metrics.FormatMetric("gauge", "MSpanSys", m.memstats.MSpanSys)
+	mtrs[16] = metrics.FormatMetric("gauge", "Mallocs", m.memstats.Mallocs)
+	mtrs[17] = metrics.FormatMetric("gauge", "NextGC", m.memstats.NextGC)
+	mtrs[18] = metrics.FormatMetric("gauge", "NumForcedGC", uint64(m.memstats.NumForcedGC))
+	mtrs[19] = metrics.FormatMetric("gauge", "NumGC", uint64(m.memstats.NumGC))
+	mtrs[20] = metrics.FormatMetric("gauge", "OtherSys", m.memstats.OtherSys)
+	mtrs[21] = metrics.FormatMetric("gauge", "PauseTotalNs", m.memstats.PauseTotalNs)
+	mtrs[22] = metrics.FormatMetric("gauge", "StackInuse", m.memstats.StackInuse)
+	mtrs[23] = metrics.FormatMetric("gauge", "StackSys", m.memstats.StackSys)
+	mtrs[24] = metrics.FormatMetric("gauge", "Sys", m.memstats.Sys)
+	mtrs[25] = metrics.FormatMetric("gauge", "TotalAlloc", m.memstats.TotalAlloc)
+	mtrs[26] = metrics.FormatFloatMetric("gauge", "GCCPUFraction", m.memstats.GCCPUFraction)
+	mtrs[27] = metrics.FormatCounter("counter", "PollCount", 1)
+	mtrs[28] = metrics.FormatMetric("gauge", "RandomValue", rand.Uint64())
 
-func (m *Metrics) GetMetrics() []Element {
-	metrics := make([]Element, 29)
-	metrics[0] = FormatMetric("gauge", "Alloc", m.memstats.Alloc)
-	metrics[1] = FormatMetric("gauge", "BuckHashSys", m.memstats.BuckHashSys)
-	metrics[2] = FormatMetric("gauge", "Frees", m.memstats.Frees)
-	metrics[3] = FormatMetric("gauge", "GCSys", m.memstats.GCSys)
-	metrics[4] = FormatMetric("gauge", "HeapAlloc", m.memstats.HeapAlloc)
-	metrics[5] = FormatMetric("gauge", "HeapIdle", m.memstats.HeapIdle)
-	metrics[6] = FormatMetric("gauge", "HeapInuse", m.memstats.HeapInuse)
-	metrics[7] = FormatMetric("gauge", "HeapObjects", m.memstats.HeapObjects)
-	metrics[8] = FormatMetric("gauge", "HeapReleased", m.memstats.HeapReleased)
-	metrics[9] = FormatMetric("gauge", "HeapSys", m.memstats.HeapSys)
-	metrics[10] = FormatMetric("gauge", "LastGC", m.memstats.LastGC)
-	metrics[11] = FormatMetric("gauge", "Lookups", m.memstats.Lookups)
-	metrics[12] = FormatMetric("gauge", "MCacheInuse", m.memstats.MCacheInuse)
-	metrics[13] = FormatMetric("gauge", "MCacheSys", m.memstats.MCacheSys)
-	metrics[14] = FormatMetric("gauge", "MSpanInuse", m.memstats.MSpanInuse)
-	metrics[15] = FormatMetric("gauge", "MSpanSys", m.memstats.MSpanSys)
-	metrics[16] = FormatMetric("gauge", "Mallocs", m.memstats.Mallocs)
-	metrics[17] = FormatMetric("gauge", "NextGC", m.memstats.NextGC)
-	metrics[18] = FormatMetric("gauge", "NumForcedGC", uint64(m.memstats.NumForcedGC))
-	metrics[19] = FormatMetric("gauge", "NumGC", uint64(m.memstats.NumGC))
-	metrics[20] = FormatMetric("gauge", "OtherSys", m.memstats.OtherSys)
-	metrics[21] = FormatMetric("gauge", "PauseTotalNs", m.memstats.PauseTotalNs)
-	metrics[22] = FormatMetric("gauge", "StackInuse", m.memstats.StackInuse)
-	metrics[23] = FormatMetric("gauge", "StackSys", m.memstats.StackSys)
-	metrics[24] = FormatMetric("gauge", "Sys", m.memstats.Sys)
-	metrics[25] = FormatMetric("gauge", "TotalAlloc", m.memstats.TotalAlloc)
-	metrics[26] = FormatFloatMetric("gauge", "GCCPUFraction", m.memstats.GCCPUFraction)
-	metrics[27] = FormatCounter("counter", "PollCount", 1)
-	metrics[28] = FormatMetric("gauge", "RandomValue", rand.Uint64())
-
-	return metrics
+	return mtrs
 }
 
 func SendMetric(val string) {
@@ -112,19 +97,19 @@ func SendMetric(val string) {
 	}
 }
 
-func PrepareData(els []Element) {
+func PrepareData(cfg *Config, els []metrics.Element) {
 	var str string
 	for _, el := range els {
 		if el.MType == "gauge" {
-			str = fmt.Sprintf("http://%s/update/%s/%s/%v", *remote, el.MType, el.ID, *(el.Value))
+			str = fmt.Sprintf("http://%s/update/%s/%s/%v", cfg.URL, el.MType, el.ID, *(el.Value))
 		} else {
-			str = fmt.Sprintf("http://%s/update/%s/%s/%v", *remote, el.MType, el.ID, *(el.Delta))
+			str = fmt.Sprintf("http://%s/update/%s/%s/%v", cfg.URL, el.MType, el.ID, *(el.Delta))
 		}
 		SendMetric(str)
 	}
 }
 
-func SendJSONData(els []Element) {
+func SendJSONData(cfg *Config, els []metrics.Element) {
 
 	var err error
 	ret, err := json.Marshal(els)
@@ -135,7 +120,7 @@ func SendJSONData(els []Element) {
 	r := bytes.NewReader(ret)
 	ctx := context.Context(context.Background())
 	err = utils.Retry(ctx, func() error {
-		resp, err := http.Post("http://"+*remote+"/update/", "application/json", r)
+		resp, err := http.Post("http://"+cfg.URL+"/update/", "application/json", r)
 		if err != nil {
 			return err
 		}
@@ -148,40 +133,31 @@ func SendJSONData(els []Element) {
 }
 
 func main() {
+	var cfg Config
+	var envCfg Config
 
-	remote = flag.String("a", "127.0.0.1:8080", "remote endpoint")
-	repInt = flag.Int("r", reportInterval, "report interval")
-	pollInt = flag.Int("p", pollInterval, "poll interval")
-
-	ri := os.Getenv("REPORT_INTERVAL")
-	pi := os.Getenv("POLL_INTERVAL")
+	flag.StringVar(&cfg.URL, "a", "127.0.0.1:8080", "remote endpoint env:ADDRESS")
+	flag.IntVar(&cfg.ReportInterval, "r", reportInterval, "report interval env:REPORT_INTERVAL")
+	flag.IntVar(&cfg.PollInterval, "p", pollInterval, "poll interval env: POLL_INTERVAL")
+	flag.StringVar(&cfg.Key, "k", "", "ключ для создания подписи заголовков env:KEY")
 
 	flag.Parse()
 
+	if err := env.Parse(&envCfg); err != nil {
+		log.Printf("[ERR][AGENT] cant load config: %e", err)
+	}
+
 	if os.Getenv("ADDRESS") != "" {
-		*remote = os.Getenv("ADDRESS")
+		cfg.URL = envCfg.URL
 	}
-
-	var rInt int
-	if ri == "" {
-		rInt = *repInt
-	} else {
-		if r, err := strconv.Atoi(ri); err == nil {
-			rInt = r
-		} else {
-			rInt = *repInt
-		}
+	if os.Getenv("REPORT_INTERVAL") != "" {
+		cfg.ReportInterval = envCfg.ReportInterval
 	}
-
-	var pInt int
-	if pi == "" {
-		pInt = *pollInt
-	} else {
-		if p, err := strconv.Atoi(pi); err == nil {
-			pInt = p
-		} else {
-			pInt = *pollInt
-		}
+	if os.Getenv("POLL_INTERVAL") != "" {
+		cfg.PollInterval = envCfg.PollInterval
+	}
+	if os.Getenv("KEY") != "" {
+		cfg.Key = envCfg.Key
 	}
 
 	myM := Metrics{
@@ -189,20 +165,20 @@ func main() {
 	}
 
 	runtime.ReadMemStats(myM.memstats)
-	PrepareData(myM.GetMetrics())
-	SendJSONData(myM.GetMetrics())
+	PrepareData(&cfg, myM.GetMetrics())
+	SendJSONData(&cfg, myM.GetMetrics())
 
-	if pInt <= rInt {
-		c := (rInt / pInt)
-		delta := rInt - (c * pInt)
+	if cfg.PollInterval <= cfg.ReportInterval {
+		c := (cfg.ReportInterval / cfg.PollInterval)
+		delta := cfg.ReportInterval - (c * cfg.PollInterval)
 		for {
 			for i := 0; i < c; i++ {
-				time.Sleep(time.Duration(*pollInt) * time.Second)
+				time.Sleep(time.Duration(cfg.PollInterval) * time.Second)
 				runtime.ReadMemStats(myM.memstats)
 			}
 			time.Sleep(time.Duration(delta) * time.Second)
-			PrepareData(myM.GetMetrics())
-			SendJSONData(myM.GetMetrics())
+			PrepareData(&cfg, myM.GetMetrics())
+			SendJSONData(&cfg, myM.GetMetrics())
 		}
 	}
 }

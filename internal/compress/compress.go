@@ -29,21 +29,16 @@ func GzipMiddleware(next http.Handler) http.Handler {
 			defer zr.Close()
 			req.Body = zr
 		}
-
 		if strings.Contains(req.Header.Get("Accept-Encoding"), "gzip") {
-
 			zw, err := gzip.NewWriterLevel(w, gzip.BestCompression)
 			if err != nil {
 				io.WriteString(w, err.Error())
 				return
 			}
 			defer zw.Close()
-
 			w.Header().Set("Content-Encoding", "gzip")
 			w = compressWriter{w, zw}
-
 		}
-
 		next.ServeHTTP(w, req)
 	})
 }
