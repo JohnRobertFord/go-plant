@@ -3,68 +3,61 @@ package main
 import (
 	"context"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/JohnRobertFord/go-plant/internal/compress"
 	"github.com/JohnRobertFord/go-plant/internal/config"
-	"github.com/JohnRobertFord/go-plant/internal/logger"
 	"github.com/JohnRobertFord/go-plant/internal/server"
-	"github.com/go-chi/chi/v5"
+	"github.com/JohnRobertFord/go-plant/internal/storage/metrics"
+	"github.com/JohnRobertFord/go-plant/internal/storage/metrics/cache"
+	"github.com/JohnRobertFord/go-plant/internal/storage/metrics/diskfile"
+	"github.com/JohnRobertFord/go-plant/internal/storage/metrics/postgres"
 )
-
-func MetricRouter(m *server.MemStorage) chi.Router {
-
-	r := chi.NewRouter()
-	r.Use(logger.Logging, compress.GzipMiddleware, server.Middleware)
-	r.Get("/", m.GetAll)
-	r.Route("/update/", func(r chi.Router) {
-		r.Post("/", m.WriteJSONMetric)
-		r.Post("/{MT}/{M}/{V}", m.WriteMetric)
-	})
-	r.Route("/value/", func(r chi.Router) {
-		r.Post("/", m.GetJSONMetric)
-		r.Get("/{MT}/{M}", m.GetMetric)
-	})
-
-	return r
-}
 
 func main() {
 
 	cfg, err := config.InitConfig()
 	if err != nil {
-		log.Fatalf("cant start server: %e", err)
+		log.Fatalf("can't init config: %e", err)
 	}
 
-	mem := server.NewMemStorage(cfg)
+	var storage metrics.Storage
+	ctx := context.Background()
+
+	if cfg.DatabaseDsn != "" {
+		storage, err = postgres.NewPostgresStorage(cfg)
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		storage = cache.NewMemStorage(cfg)
+	}
 
 	if cfg.Restore {
-		mem.Read4File(cfg.FilePath)
+		err := diskfile.Read4File(ctx, storage)
+		if err != nil {
+			log.Printf("[ERR][FILE] cant restore from file: %s", err)
+		}
 	}
 
-	httpServer := &http.Server{
-		Addr:    cfg.Bind,
-		Handler: MetricRouter(mem),
-	}
-
-	if cfg.StoreInterval > 0 {
+	if cfg.StoreInterval > 0 && cfg.DatabaseDsn == "" {
 		sleep := time.Duration(cfg.StoreInterval) * time.Second
-		go func(m *server.MemStorage, t time.Duration) {
+		go func(ms metrics.Storage, t time.Duration) {
 			for {
 				<-time.After(t)
-				server.Write2File(m)
+				err := diskfile.Write2File(ctx, ms)
+				if err != nil {
+					log.Printf("[ERR][FILE] cant write to file: %e", err)
+				}
 			}
-		}(mem, sleep)
+		}(storage, sleep)
 	}
 
-	go func() {
-		log.Fatal(httpServer.ListenAndServe())
-		httpServer.Shutdown(context.Background())
-	}()
+	metricServer := server.NewMetricServer(cfg, storage)
+
+	go metricServer.RunServer()
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan,
@@ -73,6 +66,8 @@ func main() {
 		syscall.SIGQUIT,
 	)
 	<-sigChan
-	server.Write2File(mem)
-
+	err = diskfile.Write2File(ctx, storage)
+	if err != nil {
+		log.Printf("[ERR][FILE] cant write to file: %e", err)
+	}
 }

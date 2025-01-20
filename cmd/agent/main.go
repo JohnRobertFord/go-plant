@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -11,6 +12,8 @@ import (
 	"runtime"
 	"strconv"
 	"time"
+
+	"github.com/JohnRobertFord/go-plant/internal/utils"
 )
 
 var pollInterval = 2
@@ -93,12 +96,20 @@ func (m *Metrics) GetMetrics() []Element {
 }
 
 func SendMetric(val string) {
-	resp, err := http.Post(val, "text/plain", nil)
+
+	var err error
+	ctx := context.Context(context.Background())
+	err = utils.Retry(ctx, func() error {
+		resp, err := http.Post(val, "text/plain", nil)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		return nil
+	})
 	if err != nil {
 		fmt.Println(err)
-		return
 	}
-	defer resp.Body.Close()
 }
 
 func PrepareData(els []Element) {
@@ -115,19 +126,25 @@ func PrepareData(els []Element) {
 
 func SendJSONData(els []Element) {
 
+	var err error
 	ret, err := json.Marshal(els)
-	if err != nil {
-		panic(err)
-	}
-
-	r := bytes.NewReader(ret)
-	resp, err := http.Post("http://"+*remote+"/update/", "application/json", r)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	defer resp.Body.Close()
-
+	r := bytes.NewReader(ret)
+	ctx := context.Context(context.Background())
+	err = utils.Retry(ctx, func() error {
+		resp, err := http.Post("http://"+*remote+"/update/", "application/json", r)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		return err
+	})
+	if err != nil {
+		fmt.Println(err)
+	}
 }
 
 func main() {
@@ -170,14 +187,6 @@ func main() {
 	myM := Metrics{
 		memstats: &runtime.MemStats{},
 	}
-
-	// pollTicker := time.NewTicker(time.Duration(pInt) * time.Second)
-	// reportTicker := time.NewTicker(time.Duration(rInt) * time.Second)
-
-	// var m sync.Mutex
-
-	// go UpdateMetrics(*myM.memstats, &m, pollTicker)
-	// go PrepareData(myM.GetMetrics(), &m, reportTicker)
 
 	runtime.ReadMemStats(myM.memstats)
 	PrepareData(myM.GetMetrics())
