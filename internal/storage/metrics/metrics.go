@@ -17,7 +17,7 @@ type Element struct {
 type Storage interface {
 	Insert(context.Context, Element) (*Element, error)
 	Select(context.Context, Element) (*Element, error)
-	SelectAll(context.Context) (*[]Element, error)
+	SelectAll(context.Context) ([]Element, error)
 	Ping(context.Context) error
 	GetConfig() *config.Config
 }
@@ -34,4 +34,28 @@ func IsGauge(input string) bool {
 		return true
 	}
 	return false
+}
+func FormatMetric(t string, name string, value uint64) Element {
+	val := float64(value)
+	return Element{
+		ID:    name,
+		MType: t,
+		Value: &val,
+	}
+}
+
+func FormatFloatMetric(t string, name string, value float64) Element {
+	return Element{
+		ID:    name,
+		MType: t,
+		Value: &value,
+	}
+}
+
+func FormatCounter(t string, name string, value int64) Element {
+	return Element{
+		ID:    name,
+		MType: t,
+		Delta: &value,
+	}
 }
