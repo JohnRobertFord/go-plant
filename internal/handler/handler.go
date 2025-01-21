@@ -37,7 +37,7 @@ func GetAll(ms metrics.Storage) http.HandlerFunc {
 			return
 		}
 		var out []string
-		for _, el := range *list {
+		for _, el := range list {
 			out = append(out, el.ID)
 		}
 		w.Header().Set("Content-Type", "text/html")

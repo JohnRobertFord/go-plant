@@ -18,11 +18,9 @@ func testRequest(t *testing.T, ts *httptest.Server, method, path string) (*http.
 
 	req, err := http.NewRequest(method, ts.URL+path, nil)
 	require.NoError(t, err)
-
 	resp, err := ts.Client().Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
-
 	respBody, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
@@ -36,9 +34,7 @@ func TestMetricRouter(t *testing.T) {
 	}
 
 	storage := cache.NewMemStorage(cfg)
-
 	metricServer := server.NewMetricServer(cfg, storage)
-
 	ts := httptest.NewServer(metricServer.Server.Handler)
 	defer ts.Close()
 
@@ -97,9 +93,7 @@ func TestMetricRouter(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			resp, _ := testRequest(t, ts, test.method, test.url)
 			assert.Equal(t, test.status, resp.StatusCode)
-			// assert.Equal(t, test.want, get)
 			defer resp.Body.Close()
-
 		})
 
 	}

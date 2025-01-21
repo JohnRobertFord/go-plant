@@ -27,7 +27,6 @@ func NewMemStorage(c *config.Config) *MemStorage {
 		cfg:  c,
 	}
 }
-
 func (m *MemStorage) GetConfig() *config.Config {
 	return m.cfg
 }
@@ -87,7 +86,7 @@ func (m *MemStorage) Select(ctx context.Context, el metrics.Element) (*metrics.E
 	return &out, nil
 }
 
-func (m *MemStorage) SelectAll(ctx context.Context) (*[]metrics.Element, error) {
+func (m *MemStorage) SelectAll(ctx context.Context) ([]metrics.Element, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -120,5 +119,5 @@ func (m *MemStorage) SelectAll(ctx context.Context) (*[]metrics.Element, error) 
 		}
 		list = append(list, temp)
 	}
-	return &list, err
+	return list, err
 }

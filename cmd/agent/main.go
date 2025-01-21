@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/JohnRobertFord/go-plant/internal/sign"
 	"github.com/JohnRobertFord/go-plant/internal/storage/metrics"
 	"github.com/JohnRobertFord/go-plant/internal/utils"
 	"github.com/caarlos0/env/v11"
@@ -21,6 +22,7 @@ import (
 var (
 	pollInterval   = 2
 	reportInterval = 10
+	rateLimit      = 1
 )
 
 type (
@@ -33,6 +35,7 @@ type (
 		URL            string `env:"ADDRESS"`
 		ReportInterval int    `env:"REPORT_INTERVAL"`
 		PollInterval   int    `env:"POLL_INTERVAL"`
+		RateLimit      int    `env:"RATE_LIMIT"`
 		Key            string `env:"KEY"`
 	}
 )
@@ -83,7 +86,7 @@ func (m *Metrics) GetMetrics() []metrics.Element {
 func SendMetric(val string) {
 
 	var err error
-	ctx := context.Context(context.Background())
+	ctx := context.Background()
 	err = utils.Retry(ctx, func() error {
 		resp, err := http.Post(val, "text/plain", nil)
 		if err != nil {
@@ -93,7 +96,7 @@ func SendMetric(val string) {
 		return nil
 	})
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 }
 
@@ -112,23 +115,40 @@ func PrepareData(cfg *Config, els []metrics.Element) {
 func SendJSONData(cfg *Config, els []metrics.Element) {
 
 	var err error
+	var hash string
 	ret, err := json.Marshal(els)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return
+	}
+	if cfg.Key != "" {
+		hash, err = sign.SignString(string(ret), cfg.Key)
+		if err != nil {
+			log.Println(err)
+		}
 	}
 	r := bytes.NewReader(ret)
 	ctx := context.Context(context.Background())
 	err = utils.Retry(ctx, func() error {
-		resp, err := http.Post("http://"+cfg.URL+"/update/", "application/json", r)
+		client := &http.Client{}
+		req, err := http.NewRequest("POST", "http://"+cfg.URL+"/update/", r)
+		if err != nil {
+			return err
+		}
+		req.Header.Add("Content-Type", "application/json")
+		if hash != "" {
+			req.Header.Add("Hash", hash)
+		}
+		resp, err := client.Do(req)
 		if err != nil {
 			return err
 		}
 		defer resp.Body.Close()
-		return err
+
+		return nil
 	})
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 }
 
@@ -139,7 +159,8 @@ func main() {
 	flag.StringVar(&cfg.URL, "a", "127.0.0.1:8080", "remote endpoint env:ADDRESS")
 	flag.IntVar(&cfg.ReportInterval, "r", reportInterval, "report interval env:REPORT_INTERVAL")
 	flag.IntVar(&cfg.PollInterval, "p", pollInterval, "poll interval env: POLL_INTERVAL")
-	flag.StringVar(&cfg.Key, "k", "", "ключ для создания подписи заголовков env:KEY")
+	flag.IntVar(&cfg.RateLimit, "l", rateLimit, "rate limit env: RATE_LIMIT")
+	flag.StringVar(&cfg.Key, "k", "", "key for creating header signature env:KEY")
 
 	flag.Parse()
 
@@ -155,6 +176,9 @@ func main() {
 	}
 	if os.Getenv("POLL_INTERVAL") != "" {
 		cfg.PollInterval = envCfg.PollInterval
+	}
+	if os.Getenv("RATE_LIMIT") != "" {
+		cfg.RateLimit = envCfg.RateLimit
 	}
 	if os.Getenv("KEY") != "" {
 		cfg.Key = envCfg.Key
