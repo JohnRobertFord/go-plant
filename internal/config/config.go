@@ -31,12 +31,12 @@ func InitConfig() (*Config, error) {
 	var cfg Config
 	var envCfg Config
 
-	flag.StringVar(&cfg.Bind, "a", ":8080", "adderss and port to run server, or use env ADDRESS")
+	flag.StringVar(&cfg.Bind, "a", ":8080", "адрес сервера (env ADDRESS)")
 	flag.IntVar(&cfg.StoreInterval, "i", 10, "интервал времени в секундах, по истечении которого текущие показания сервера сохраняются на диск (по умолчанию 300 секунд, значение 0 делает запись синхронной)")
-	flag.StringVar(&cfg.FilePath, "f", "metrics.log", "путь до файла, куда сохраняются текущие значения")
+	flag.StringVar(&cfg.FilePath, "f", "metrics.log", "путь файла, для сохранения текущих значений")
 	flag.BoolVar(&cfg.Restore, "r", true, "булево значение (true/false), определяющее, загружать или нет ранее сохранённые значения из указанного файла при старте сервера")
-	flag.StringVar(&cfg.DatabaseDsn, "d", "", "адрес подключения к БД (env DATABASE_DSN) example: host=localhost user=postgres_user password=postgres_password dbname=postgres_db sslmode=disable")
-	flag.StringVar(&cfg.Key, "k", "", "ключ для создания подписи заголовков")
+	flag.StringVar(&cfg.DatabaseDsn, "d", "", "адрес подключения к БД (env DATABASE_DSN)")
+	flag.StringVar(&cfg.Key, "k", "", "ключ для создания подписи заголовков (env KEY)")
 
 	flag.Parse()
 
