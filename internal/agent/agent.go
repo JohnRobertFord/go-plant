@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/JohnRobertFord/go-plant/internal/sign"
@@ -29,9 +30,8 @@ var (
 
 type (
 	Metrics struct {
-		Memstats    *runtime.MemStats
-		PollCount   int64
-		RandomValue uint64
+		mapa map[string]any
+		mu   sync.Mutex
 	}
 	Config struct {
 		URL            string `env:"ADDRESS"`
@@ -40,6 +40,8 @@ type (
 		RateLimit      int    `env:"RATE_LIMIT"`
 		Key            string `env:"KEY"`
 	}
+	gauge   float64
+	counter int64
 )
 
 func InitConfig() (*Config, error) {
@@ -58,19 +60,19 @@ func InitConfig() (*Config, error) {
 		return nil, fmt.Errorf("[ERR][AGENT] cant load config: %e", err)
 	}
 
-	if os.Getenv("ADDRESS") != "" {
+	if _, ok := os.LookupEnv("ADDRESS"); ok {
 		cfg.URL = envCfg.URL
 	}
-	if os.Getenv("REPORT_INTERVAL") != "" {
+	if _, ok := os.LookupEnv("REPORT_INTERVAL"); ok {
 		cfg.ReportInterval = envCfg.ReportInterval
 	}
-	if os.Getenv("POLL_INTERVAL") != "" {
+	if _, ok := os.LookupEnv("POLL_INTERVAL"); ok {
 		cfg.PollInterval = envCfg.PollInterval
 	}
-	if os.Getenv("RATE_LIMIT") != "" {
+	if _, ok := os.LookupEnv("RATE_LIMIT"); ok {
 		cfg.RateLimit = envCfg.RateLimit
 	}
-	if os.Getenv("KEY") != "" {
+	if _, ok := os.LookupEnv("KEY"); ok {
 		cfg.Key = envCfg.Key
 	}
 
@@ -84,54 +86,76 @@ func (c *Config) String() string {
 		c.PollInterval,
 		c.Key)
 }
+func NewStorage() *Metrics {
+	var ms Metrics
+	ms.mapa = make(map[string]any)
+	return &ms
+}
+func (m *Metrics) CollectMetrics() {
 
-func (m *Metrics) GetMetrics() []metrics.Element {
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
 
-	mtrs := make([]metrics.Element, 29)
-	mtrs[0] = metrics.FormatMetric("gauge", "Alloc", m.Memstats.Alloc)
-	mtrs[1] = metrics.FormatMetric("gauge", "BuckHashSys", m.Memstats.BuckHashSys)
-	mtrs[2] = metrics.FormatMetric("gauge", "Frees", m.Memstats.Frees)
-	mtrs[3] = metrics.FormatMetric("gauge", "GCSys", m.Memstats.GCSys)
-	mtrs[4] = metrics.FormatMetric("gauge", "HeapAlloc", m.Memstats.HeapAlloc)
-	mtrs[5] = metrics.FormatMetric("gauge", "HeapIdle", m.Memstats.HeapIdle)
-	mtrs[6] = metrics.FormatMetric("gauge", "HeapInuse", m.Memstats.HeapInuse)
-	mtrs[7] = metrics.FormatMetric("gauge", "HeapObjects", m.Memstats.HeapObjects)
-	mtrs[8] = metrics.FormatMetric("gauge", "HeapReleased", m.Memstats.HeapReleased)
-	mtrs[9] = metrics.FormatMetric("gauge", "HeapSys", m.Memstats.HeapSys)
-	mtrs[10] = metrics.FormatMetric("gauge", "LastGC", m.Memstats.LastGC)
-	mtrs[11] = metrics.FormatMetric("gauge", "Lookups", m.Memstats.Lookups)
-	mtrs[12] = metrics.FormatMetric("gauge", "MCacheInuse", m.Memstats.MCacheInuse)
-	mtrs[13] = metrics.FormatMetric("gauge", "MCacheSys", m.Memstats.MCacheSys)
-	mtrs[14] = metrics.FormatMetric("gauge", "MSpanInuse", m.Memstats.MSpanInuse)
-	mtrs[15] = metrics.FormatMetric("gauge", "MSpanSys", m.Memstats.MSpanSys)
-	mtrs[16] = metrics.FormatMetric("gauge", "Mallocs", m.Memstats.Mallocs)
-	mtrs[17] = metrics.FormatMetric("gauge", "NextGC", m.Memstats.NextGC)
-	mtrs[18] = metrics.FormatMetric("gauge", "NumForcedGC", uint64(m.Memstats.NumForcedGC))
-	mtrs[19] = metrics.FormatMetric("gauge", "NumGC", uint64(m.Memstats.NumGC))
-	mtrs[20] = metrics.FormatMetric("gauge", "OtherSys", m.Memstats.OtherSys)
-	mtrs[21] = metrics.FormatMetric("gauge", "PauseTotalNs", m.Memstats.PauseTotalNs)
-	mtrs[22] = metrics.FormatMetric("gauge", "StackInuse", m.Memstats.StackInuse)
-	mtrs[23] = metrics.FormatMetric("gauge", "StackSys", m.Memstats.StackSys)
-	mtrs[24] = metrics.FormatMetric("gauge", "Sys", m.Memstats.Sys)
-	mtrs[25] = metrics.FormatMetric("gauge", "TotalAlloc", m.Memstats.TotalAlloc)
-	mtrs[26] = metrics.FormatFloatMetric("gauge", "GCCPUFraction", m.Memstats.GCCPUFraction)
-	mtrs[27] = metrics.FormatCounter("counter", "PollCount", 1)
-	mtrs[28] = metrics.FormatMetric("gauge", "RandomValue", rand.Uint64())
-
-	return mtrs
+	m.PushMetric("Alloc", memStats.Alloc)
+	m.PushMetric("BuckHashSys", memStats.BuckHashSys)
+	m.PushMetric("Frees", memStats.Frees)
+	m.PushMetric("GCSys", memStats.GCSys)
+	m.PushMetric("HeapAlloc", memStats.HeapAlloc)
+	m.PushMetric("HeapIdle", memStats.HeapIdle)
+	m.PushMetric("HeapInuse", memStats.HeapInuse)
+	m.PushMetric("HeapObjects", memStats.HeapObjects)
+	m.PushMetric("HeapReleased", memStats.HeapReleased)
+	m.PushMetric("HeapSys", memStats.HeapSys)
+	m.PushMetric("LastGC", memStats.LastGC)
+	m.PushMetric("Lookups", memStats.Lookups)
+	m.PushMetric("MCacheInuse", memStats.MCacheInuse)
+	m.PushMetric("MCacheSys", memStats.MCacheSys)
+	m.PushMetric("MSpanInuse", memStats.MSpanInuse)
+	m.PushMetric("MSpanSys", memStats.MSpanSys)
+	m.PushMetric("Mallocs", memStats.Mallocs)
+	m.PushMetric("NextGC", memStats.NextGC)
+	m.PushMetric("NumForcedGC", uint64(memStats.NumForcedGC))
+	m.PushMetric("NumGC", uint64(memStats.NumGC))
+	m.PushMetric("OtherSys", memStats.OtherSys)
+	m.PushMetric("PauseTotalNs", memStats.PauseTotalNs)
+	m.PushMetric("StackInuse", memStats.StackInuse)
+	m.PushMetric("StackSys", memStats.StackSys)
+	m.PushMetric("Sys", memStats.Sys)
+	m.PushMetric("TotalAlloc", memStats.TotalAlloc)
+	m.PushFloatMetric("GCCPUFraction", memStats.GCCPUFraction)
+	m.PushCounter("PollCount", 1)
+	m.PushMetric("RandomValue", rand.Uint64())
 }
 
-func GetGopsutilMetrics() []metrics.Element {
+func (m *Metrics) CollectGopsutilMetrics() {
 	memory, _ := mem.VirtualMemory()
 	usage, _ := cpu.Percent(1*time.Second, true)
 
-	var out []metrics.Element
-	out = append(out, metrics.FormatMetric("gauge", "TotalMemory", memory.Total))
-	out = append(out, metrics.FormatMetric("gauge", "FreeMemory", memory.Free))
+	m.PushMetric("TotalMemory", memory.Total)
+	m.PushMetric("FreeMemory", memory.Free)
 	for i, u := range usage {
-		out = append(out, metrics.FormatFloatMetric("gauge", fmt.Sprintf("CPUutilization%d", i), u))
+		m.PushFloatMetric(fmt.Sprintf("CPUutilization%d", i), u)
 	}
-	return out
+}
+func (m *Metrics) PushMetric(name string, value uint64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.mapa[name] = gauge(value)
+}
+func (m *Metrics) PushFloatMetric(name string, value float64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.mapa[name] = gauge(value)
+}
+func (m *Metrics) PushCounter(name string, value int64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if c, ok := m.mapa[name].(counter); ok {
+		m.mapa[name] = c + counter(value)
+	} else {
+		m.mapa[name] = c
+	}
+
 }
 
 func SendMetric(cfg *Config, els []metrics.Element) {
@@ -158,6 +182,30 @@ func SendMetric(cfg *Config, els []metrics.Element) {
 			log.Println(err)
 		}
 	}
+}
+
+func GetElements(m *Metrics) []metrics.Element {
+	var out []metrics.Element
+	for name, value := range m.mapa {
+		switch value := value.(type) {
+		case gauge:
+			v := float64(value)
+			out = append(out, metrics.Element{
+				ID:    name,
+				MType: "gauge",
+				Value: &v,
+			})
+		case counter:
+			v := int64(value)
+			out = append(out, metrics.Element{
+				ID:    name,
+				MType: "counter",
+				Delta: &v,
+			})
+		}
+	}
+	fmt.Println(out)
+	return out
 }
 
 func SendJSONData(cfg *Config, els []metrics.Element) error {
@@ -200,9 +248,9 @@ func SendJSONData(cfg *Config, els []metrics.Element) error {
 	return nil
 }
 
-func Worker(ctx context.Context, f func() error, delay time.Duration, count int) {
+func Worker(ctx context.Context, f func() error, delay time.Duration, count int, wg *sync.WaitGroup) {
 	workChannel := make(chan struct{})
-
+	wg.Add(1)
 	for i := 0; i < count; i++ {
 		go func(c chan struct{}) {
 			for {
@@ -226,6 +274,7 @@ func Worker(ctx context.Context, f func() error, delay time.Duration, count int)
 			case <-ticker.C:
 				workChannel <- struct{}{}
 			case <-ctx.Done():
+				wg.Done()
 				return
 			}
 		}

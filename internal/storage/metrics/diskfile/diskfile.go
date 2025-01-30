@@ -37,6 +37,9 @@ func Read4File(ctx context.Context, ms metrics.Storage) error {
 
 func Write2File(ctx context.Context, ms metrics.Storage) error {
 
+	if len(ms.GetConfig().FilePath) == 0 {
+		return fmt.Errorf("file path is nil")
+	}
 	file, err := os.OpenFile(ms.GetConfig().FilePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
 		return err

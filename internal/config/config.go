@@ -44,22 +44,22 @@ func InitConfig() (*Config, error) {
 		return nil, fmt.Errorf("cant load config: %e", err)
 	}
 
-	if os.Getenv("ADDRESS") != "" {
+	if _, ok := os.LookupEnv("ADDRESS"); ok {
 		cfg.Bind = envCfg.Bind
 	}
-	if os.Getenv("FILE_STORAGE_PATH") != "" {
+	if _, ok := os.LookupEnv("FILE_STORAGE_PATH"); ok {
 		cfg.FilePath = envCfg.FilePath
 	}
-	if os.Getenv("STORE_INTERVAL") != "" {
+	if _, ok := os.LookupEnv("STORE_INTERVAL"); ok {
 		cfg.StoreInterval = envCfg.StoreInterval
 	}
-	if os.Getenv("RESTORE") != "" {
+	if _, ok := os.LookupEnv("RESTORE"); ok {
 		cfg.Restore = envCfg.Restore
 	}
-	if os.Getenv("DATABASE_DSN") != "" {
+	if _, ok := os.LookupEnv("DATABASE_DSN"); ok {
 		cfg.DatabaseDsn = envCfg.DatabaseDsn
 	}
-	if os.Getenv("KEY") != "" {
+	if _, ok := os.LookupEnv("KEY"); ok {
 		cfg.Key = envCfg.Key
 	}
 
