@@ -64,7 +64,7 @@ func (p *postgres) Ping(ctx context.Context) error {
 	return nil
 }
 
-func (p *postgres) SelectAll(ctx context.Context) (*[]metrics.Element, error) {
+func (p *postgres) SelectAll(ctx context.Context) ([]metrics.Element, error) {
 
 	var out []metrics.Element
 	var err error
@@ -82,7 +82,7 @@ func (p *postgres) SelectAll(ctx context.Context) (*[]metrics.Element, error) {
 		return nil
 	})
 
-	return &out, err
+	return out, err
 }
 func (p *postgres) Insert(ctx context.Context, el metrics.Element) (*metrics.Element, error) {
 

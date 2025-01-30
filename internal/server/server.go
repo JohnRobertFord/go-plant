@@ -23,7 +23,6 @@ func (s server) RunServer() {
 	log.Fatal(s.Server.ListenAndServe())
 	s.Server.Shutdown(context.Background())
 }
-
 func NewMetricServer(cfg *config.Config, ms metrics.Storage) *server {
 	r := chi.NewRouter()
 	r.Use(logger.Logging, compress.GzipMiddleware, Middleware)
